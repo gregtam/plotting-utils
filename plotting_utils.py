@@ -8,7 +8,8 @@ from sklearn.metrics import roc_auc_score, roc_curve
 from statsmodels.stats.proportion import proportion_confint
 
 
-def plot_compare_feat_population(data_df, x_col, y_col, **kwargs):
+def plot_compare_feat_population(data_df, x_col, y_col, normalize=False,
+                                 **kwargs):
     """Plots overlaid histograms of a given feature for different
     populations. Typically used to compare two populations based on the
     dependent variable.
@@ -17,10 +18,11 @@ def plot_compare_feat_population(data_df, x_col, y_col, **kwargs):
     data_df - A DataFrame that has the x and y variables
     x_col - The feature we wish to compare
     y_col - The column which determines the populations
+    normalize - Whether to normalize the populations (Default: False)
     kwargs - Matplotlib kwargs
     """
     
-    def _pivot_normalize_column(df, x_col, y_col):
+    def _pivot_column(df, x_col, y_col, normalize):
         group_by_srs = df[[y_col, x_col]]\
             .fillna('none')\
             .groupby([y_col, x_col])\
@@ -35,21 +37,28 @@ def plot_compare_feat_population(data_df, x_col, y_col, **kwargs):
                   )
             
         # Normalize counts
-        for col_name in pivot_df:
-            pivot_df[col_name] = pivot_df[col_name]/pivot_df[col_name].sum()
+        if normalize:
+            for col_name in pivot_df:
+                col_sum = pivot_df[col_name].sum()
+                pivot_df[col_name] = pivot_df[col_name]/col_sum
             
         pivot_df.fillna(0, inplace=True)
         
         return pivot_df
 
-    pivot_df = _pivot_normalize_column(data_df, x_col, y_col)
+    pivot_df = _pivot_column(data_df, x_col, y_col, normalize)
     pivot_df.plot(kind='bar', **kwargs)
+
+    if normalize:
+        y_label = 'Relative Frequency'
+    else:
+        y_label = 'Frequency'
 
     if 'ax' in kwargs:
         ax = kwargs['ax']
-        ax.set_ylabel('Relative Frequency')
+        ax.set_ylabel(y_label)
     else:
-        plt.ylabel('Relative Frequency')
+        plt.ylabel(y_label)
     plt.tight_layout()
     
     return pivot_df
@@ -97,7 +106,8 @@ def plot_feature_importances(clf, feat_names, top_n=None, **kwargs):
     
 
 def plot_proportion_w_confint(data_df, x_col, y_col,
-                              n_top_feat=10, max_ci_len=1.0, **kwargs):
+                              n_top_feat=10, max_ci_len=1.0, show_n_obs=None,
+                              **kwargs):
     """Plots the proportion of a binary variable grouped by a given
     feature.
     
@@ -108,6 +118,11 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
     n_top_feat - The number of top features by proportion to plot
                  (Default: 10)
     max_ci_len - The maximum ci length (Default: 1.0)
+    show_n_obs - Whether to show the number of observations in the plot.
+                 If show_n_obs equals 'in_plot', then show on the graph.
+                 If show_n_obs equals 'in_index', then append it to the
+                 index.
+                 (Default: None)
     kwargs - Matplotlib kwargs
     """
     
@@ -164,8 +179,23 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
             plt.legend(loc=0)
 
         plt.tight_layout()
+
+    def _plot_n_obs(grouped_df, show_n_obs):
+        if show_n_obs == 'in_plot':
+            for index, n_obs in enumerate(grouped_df.n_obs):
+                n_obs_txt = 'n_obs = {}'.format(n_obs)
+                plt.text(0.01, index, n_obs_txt,
+                         color='white', size=12, verticalalignment='center')
+
+        elif show_n_obs == 'in_index':
+            # Include number of observations in index
+            grouped_df.index = ['{} (n_obs = {:,})'.format(sr, n_obs)
+                                    for sr, n_obs in zip(grouped_df.index,
+                                                         grouped_df.n_obs)]
+
     
     grouped_df = data_df[[y_col, x_col]]\
+        .fillna('none')\
         .groupby(x_col)\
         .agg([np.sum, np.size, np.mean])
         
@@ -179,7 +209,10 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
         .query('ci_length < @max_ci_len')\
         .tail(n_top_feat)
         
+    _plot_n_obs(grouped_df, show_n_obs)
+
     _create_plot(grouped_df, **kwargs)
+
     
     return grouped_df
 
