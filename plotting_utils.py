@@ -120,7 +120,7 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
     max_ci_len - The maximum ci length (Default: 1.0)
     show_n_obs - Whether to show the number of observations in the plot.
                  If show_n_obs equals 'in_plot', then show on the graph.
-                 If show_n_obs equals 'in_index', then append it to the
+                 If show_n_obs equals 'in_axis', then append it to the
                  index.
                  (Default: None)
     kwargs - Matplotlib kwargs
@@ -183,15 +183,17 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
     def _plot_n_obs(grouped_df, show_n_obs):
         if show_n_obs == 'in_plot':
             for index, n_obs in enumerate(grouped_df.n_obs):
-                n_obs_txt = 'n_obs = {}'.format(n_obs)
+                n_obs_txt = 'n_obs = {:,}'.format(n_obs)
                 plt.text(0.01, index, n_obs_txt,
                          color='white', size=12, verticalalignment='center')
-
-        elif show_n_obs == 'in_index':
+        elif show_n_obs == 'in_axis':
             # Include number of observations in index
             grouped_df.index = ['{} (n_obs = {:,})'.format(sr, n_obs)
                                     for sr, n_obs in zip(grouped_df.index,
                                                          grouped_df.n_obs)]
+        elif show_n_obs is not None:
+            raise ValueError("show_n_obs should be either 'in_plot' or 'in_axis'")
+
 
     
     grouped_df = data_df[[y_col, x_col]]\
