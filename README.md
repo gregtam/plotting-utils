@@ -1,2 +1,2 @@
-# plotting-utils
-Python plotting utility functions
+# python-utils
+Python plotting and other useful data science utility functions.
