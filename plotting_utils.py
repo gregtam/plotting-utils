@@ -4,7 +4,10 @@ from itertools import izip
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.metrics import roc_auc_score, roc_curve
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor,\
+                         ExtraTreeClassifier, ExtraTreeRegressor
 from statsmodels.stats.proportion import proportion_confint
 
 
@@ -77,11 +80,10 @@ def plot_feature_importances(clf, feat_names, top_n=None, **kwargs):
     
     Returns a DataFrame of the feature importances.
     """
-    
-    if not (isinstance(clf, DecisionTreeClassifier)
-            or isinstance(clf, DecisionTreeRegressor)
-            or isinstance(clf, RandomForestClassifier)
-            or isinstance(clf, RandomForestRegressor)):
+
+    clf_tuple = (DecisionTreeClassifier, DecisionTreeRegressor,
+                 RandomForestClassifier, RandomForestRegressor)
+    if not isinstance(clf, clf_tuple):
         raise TypeError('clf should be one of (RandomForestClassifier, RandomForestRegressor, RandomForestClassifier, RandomForestRegressor)')
         
     feat_imp_df = pd.DataFrame()
@@ -106,7 +108,7 @@ def plot_feature_importances(clf, feat_names, top_n=None, **kwargs):
     
 
 def plot_proportion_w_confint(data_df, x_col, y_col,
-                              n_top_feat=10, max_ci_len=1.0, show_n_obs=None,
+                              top_n=10, max_ci_len=1.0, show_n_obs=None,
                               **kwargs):
     """Plots the proportion of a binary variable grouped by a given
     feature.
@@ -115,7 +117,7 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
     data_df - A DataFrame that has the x and y variables
     x_col - The name of the x variable
     y_col - The name of the y variable
-    n_top_feat - The number of top features by proportion to plot
+    top_n - The number of top features by proportion to plot
                  (Default: 10)
     max_ci_len - The maximum ci length (Default: 1.0)
     show_n_obs - Whether to show the number of observations in the plot.
@@ -209,7 +211,7 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
     grouped_df = grouped_df\
         .sort_values('prop')\
         .query('ci_length < @max_ci_len')\
-        .tail(n_top_feat)
+        .tail(top_n)
         
     _plot_n_obs(grouped_df, show_n_obs)
 
@@ -230,9 +232,8 @@ def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
     Returns a DataFrame of the regression coefficients.
     """
     
-    if not (isinstance(clf, ElasticNet)
-            or isinstance(clf, LinearRegression)
-            or isinstance(clf, LogisticRegression)):
+    clf_tuple = (ElasticNet, LinearRegression, LogisticRegression)
+    if not isinstance(clf, clf_tuple):
         raise TypeError('clf should be one of (ElasticNet, LinearRegression, LogisticRegression)')
         
     def _create_coef_df(clf, feat_names):
