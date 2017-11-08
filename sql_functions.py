@@ -42,8 +42,7 @@ def clear_schema(schema_name, conn, print_query=False):
     ----------
     schema_name : str
         Name of the schema in SQL
-    conn : str
-        A psycopg2 connection object
+    conn : A psycopg2 connection object
     print_query : bool, default False
         If True, print the resulting query
     """
@@ -155,7 +154,8 @@ def get_percent_missing(full_table_name, conn, print_query=False):
     each column. It will also determine the total number of rows in the
     table.
 
-    Inputs:
+    Parameters
+    ----------
     full_table_name : str
         Name of the table in SQL. Input can also include have the schema
         name prepended, with a '.', e.g., 'schema_name.table_name'.
@@ -255,7 +255,7 @@ def save_df_to_db(df, table_name, metadata, engine, distribution_key=None,
     
     Parameters
     ----------
-    df : Pandas DataFrame
+    df : DataFrame
         The DataFrame we wish to save
     table_name : str
         A string indicating what we want to name the table
@@ -268,7 +268,7 @@ def save_df_to_db(df, table_name, metadata, engine, distribution_key=None,
     drop_table : bool, default False
         If True, drop the table if before creating the new table
     print_query : bool, default False
-        If True, print the resulting query.
+        If True, print the resulting query
     """
     
     def _create_empty_table(df, table_name, engine, distribution_key, randomly,

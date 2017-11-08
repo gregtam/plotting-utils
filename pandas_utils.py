@@ -20,7 +20,7 @@ def get_common_dummies(data, top_n=10, prefix_sep='_', clean_col=True):
     
     Parameters
     ----------
-    data : A Pandas Series or DataFrame
+    data : Series or DataFrame
     top_n : int, list, or dict, default 10
         A int, list, or dict representing the number of most common 
         features to create dummy variables. If it is a int, then it
@@ -89,7 +89,7 @@ def get_list_type_dummies(data, prefix_sep='_', clean_col=True,
     
     Parameters
     ----------
-    data : A Pandas Series
+    data : Series
     prefix_sep : str, default '_'
         The string that will separate the column name its value
     clean_col : bool, default True

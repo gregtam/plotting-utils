@@ -17,12 +17,17 @@ def plot_compare_feat_population(data_df, x_col, y_col, normalize=False,
     populations. Typically used to compare two populations based on the
     dependent variable.
     
-    Inputs:
-    data_df - A DataFrame that has the x and y variables
-    x_col - The feature we wish to compare
-    y_col - The column which determines the populations
-    normalize - Whether to normalize the populations (Default: False)
-    kwargs - Matplotlib kwargs
+    Parameters
+    ----------
+    data_df : DataFrame
+        DataFrame that has the x and y variables
+    x_col : str
+        The feature we wish to compare
+    y_col : str
+        The column which determines the populations
+    normalize : bool, default False
+        Whether to normalize the populations
+    kwargs : Matplotlib kwargs
     """
     
     def _pivot_column(df, x_col, y_col, normalize):
@@ -70,13 +75,15 @@ def plot_compare_feat_population(data_df, x_col, y_col, normalize=False,
 def plot_feature_importances(clf, feat_names, top_n=None, **kwargs):
     """Plots the top feature importances.
     
-    Inputs:
-    clf - A DecisionTreeClassifier, DecisionTreeRegressor,
+    Parameters
+    ----------
+    clf : A DecisionTreeClassifier, DecisionTreeRegressor,
           RandomForestClassifier, or RandomForestRegressor object
-    feat_names - A list of the feature names
-    top_n - The number of top features to plot. If None, plot all
-            features (Default: None)
-    kwargs - Matplotlib keyword arguments
+    feat_names : list
+        A list of the feature names
+    top_n : int, default None
+        The number of top features to plot. If None, plot all features
+    kwargs : Matplotlib keyword arguments
     
     Returns a DataFrame of the feature importances.
     """
@@ -113,8 +120,10 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
     """Plots the proportion of a binary variable grouped by a given
     feature.
     
-    Inputs:
-    data_df - A DataFrame that has the x and y variables
+    Parameters
+    ----------
+    data_df : DataFrame
+        DataFrame that has the x and y variables
     x_col - The name of the x variable
     y_col - The name of the y variable
     top_n - The number of top features by proportion to plot
@@ -281,12 +290,16 @@ def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
 def plot_roc(y_test, y_score, ax=None, title=None, **kwargs):
     """Plots the ROC curve for a binary classifier.
     
-    Inputs:
-    y_test - The true values of the observations.
-    y_score - The corresponding scores.
-    ax - Matplotlib axes object (Default: None)
-    title - Plotting title. It will add AUC after this. (Default: None)
-    kwargs - Matplotlib keyword arguments
+    Parameters
+    ----------
+    y_test : list, Series
+        The true values of the observations.
+    y_score : list, Series
+        The corresponding scores.
+    ax : Matplotlib axes object, default None
+    title : str, default None
+        Plotting title. It will add AUC after this.
+    kwargs : Matplotlib keyword arguments
     """
     auc_val = roc_auc_score(y_test, y_score)
     fpr, tpr, _ = roc_curve(y_test, y_score)
@@ -323,9 +336,12 @@ def save_fig(filename, directory='plots'):
     """Saves a Matplotlib figure with the date prepended to the
     filename.
 
-    Inputs:
-    filename - The name of the file
-    directory - Where the image will be saved (Default: plots)
+    Parameters
+    ----------
+    filename : str
+        The name of the file
+    directory : str, default 'plots'
+        Where the image will be saved
     """
 
     month = date.today().month
