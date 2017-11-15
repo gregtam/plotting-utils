@@ -270,26 +270,62 @@ def save_df_to_db(df, table_name, metadata, engine, distribution_key=None,
     print_query : bool, default False
         If True, print the resulting query
     """
+
+    def _add_quotes(x):
+        """Adds quotation marks to a string."""
+        if x is None:
+            return 'NULL'
+        else:
+            return "'{}'".format(x)
+
+    def _get_data_type(col_name):
+        test_entry = df[col_name].dropna().iloc[0]
+        if isinstance(test_entry, (int, float)):
+            return 'numeric'
+        elif isinstance(test_entry, (str)):
+            return 'text'
+
+    def _get_array_str(col_name):
+        def _get_unnest_array_str(array_str):
+            return 'UNNEST(ARRAY[{}])'.format(array_str)
+
+        data_type = _get_data_type(col_name)
+
+        if data_type == 'numeric':
+            vals_list = df[col_name]\
+                .fillna('NULL')\
+                .astype(str)\
+                .tolist()
+        elif data_type == 'text':
+            vals_list = df[col_name].map(_add_quotes).tolist()
+        else:
+            pass
+
+        array_str = ', '.join(vals_list)
+        return _get_unnest_array_str(array_str)
+
+    array_str_list = [_get_array_str(col_name) for col_name in df]
+    column_query_list = ['{} AS {}'.format(arr, col_name)
+                             for arr, col_name in zip(array_str_list,
+                                                      df.columns)]
+    column_query = ', '.join(column_query_list)
+
+    if drop_table:
+        drop_sql = 'DROP TABLE IF EXISTS {}'.format(table_name)
+        psql.execute(drop_sql, engine)
+
+    distribution_str = _get_distribution_str(distribution_key, randomly)
+
+    create_table_sql = '''
+    CREATE TABLE {table_name}
+       AS SELECT {column_query}
+     {distribution_str};
+    '''.format(**locals())
     
-    def _create_empty_table(df, table_name, engine, distribution_key, randomly,
-                            print_query):
-        """Creates an empty table based on a Pandas DataFrame"""
-        # Set create table string
-        create_str = 'CREATE TABLE {} ('.format(table_name)
-        # Specify column names and data types
-        columns_str = ',\n'.join(['{} {}'.format(s.name, s.type)
-                                      for s in selected_table.c])
-        # Set distribution key
-        distribution_str = _get_distribution_str(distribution_key, randomly)
+    if print_query:
+        print dedent(create_table_sql)
 
-        create_table_str = '{create_str}{columns_str}) {distribution_str};'\
-            .format(**locals())
-
-        if print_query:
-            print create_table_str
-
-        # Create the table with no rows
-        psql.execute(create_table_str, engine)
+    psql.execute(create_table_sql, engine)
 
 
 def save_table(selected_table, table_name, metadata, engine,
