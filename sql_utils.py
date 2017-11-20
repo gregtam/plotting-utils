@@ -330,7 +330,7 @@ def save_df_to_db(df, table_name, metadata, engine, distribution_key=None,
 
 def save_table(selected_table, table_name, metadata, engine,
                distribution_key=None, randomly=False, drop_table=False,
-               print_query=False):
+               temp=False, print_query=False):
     """Saves a SQLAlchemy selectable object to database.
     
     Parameters
@@ -347,15 +347,21 @@ def save_table(selected_table, table_name, metadata, engine,
         If True, distribute table randomly
     drop_table : bool, default False
         If True, drop the table if it exists before creating new table
+    temp : bool, default False
+        If True, then create a temporary table instead
     print_query : str, default False
         If True, print the resulting query
     """
 
     def _create_empty_table(selected_table, table_name, engine,
-                            distribution_key, randomly, print_query):
+                            distribution_key, randomly, temp, print_query):
         """Creates an empty table based on a SQLAlchemy selected table."""
         # Set create table string
-        create_str = 'CREATE TABLE {} ('.format(table_name)
+        if temp:
+            create_str = 'CREATE TEMP TABLE {} ('.format(table_name)
+        else:
+            create_str = 'CREATE TABLE {} ('.format(table_name)
+
         # Specify column names and data types
         columns_str = ',\n'.join(['{} {}'.format(s.name, s.type)
                                       for s in selected_table.c])
