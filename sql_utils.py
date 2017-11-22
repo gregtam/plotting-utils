@@ -4,7 +4,7 @@ from textwrap import dedent
 import pandas as pd
 import pandas.io.sql as psql
 import psycopg2
-from sqlalchemy import Column, Table
+from sqlalchemy import Column, Table, MetaData
 
 
 def _get_distribution_str(distribution_key, randomly):
@@ -249,7 +249,7 @@ def kill_process(conn, pid, print_query=False):
     psql.execute(sql, conn)
 
 
-def save_df_to_db(df, table_name, metadata, engine, distribution_key=None,
+def save_df_to_db(df, table_name, engine, distribution_key=None,
                   randomly=False, drop_table=False, print_query=False):
     """Saves a Pandas DataFrame to a database as a table.
     
@@ -259,7 +259,6 @@ def save_df_to_db(df, table_name, metadata, engine, distribution_key=None,
         The DataFrame we wish to save
     table_name : str
         A string indicating what we want to name the table
-    metadata : SQLAlchemy MetaData object
     engine : SQLAlchemy engine object
     distribution_key : str, default ''
         The specified distribution key, if applicable
@@ -328,9 +327,9 @@ def save_df_to_db(df, table_name, metadata, engine, distribution_key=None,
     psql.execute(create_table_sql, engine)
 
 
-def save_table(selected_table, table_name, metadata, engine,
-               distribution_key=None, randomly=False, drop_table=False,
-               temp=False, print_query=False):
+def save_table(selected_table, table_name, engine, distribution_key=None,
+               randomly=False, drop_table=False, temp=False,
+               print_query=False):
     """Saves a SQLAlchemy selectable object to database.
     
     Parameters
@@ -339,7 +338,6 @@ def save_table(selected_table, table_name, metadata, engine,
         A table we wish to save
     table_name : str
         What we want to name the table
-    metadata : SQLAlchemy MetaData object
     engine : SQLAlchemy engine object
     distribution_key : str, default None
         The specified distribution key, if applicable
@@ -382,8 +380,9 @@ def save_table(selected_table, table_name, metadata, engine,
 
     # Create an empty table with the desired columns
     _create_empty_table(selected_table, table_name, engine, distribution_key,
-                        randomly, print_query)
+                        randomly, temp, print_query)
  
+    metadata = MetaData(engine)
     created_table = Table(table_name, metadata, autoload=True)
     # Insert rows from selected table into the new table
     insert_sql = created_table\
