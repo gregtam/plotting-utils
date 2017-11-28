@@ -8,7 +8,7 @@ from sqlalchemy import Column, Table, MetaData
 
 
 def _get_distribution_str(distribution_key, randomly):
-    # Set distribution key string
+    """Set distribution key string"""
     if distribution_key is None and not randomly:
         return ''
     elif distribution_key is None and randomly:
