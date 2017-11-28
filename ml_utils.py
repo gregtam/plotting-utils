@@ -15,6 +15,58 @@ def _clean_col_name(col_name):
         .rstrip('_')
 
 
+def extract_dt_rule_string(obs, tree, feature_names):
+    """This function gets, for a given observation, the set of rules the
+    observation follows in a Decision Tree.
+    
+    Parameters
+    ----------
+    obs : list
+        A list of the observation's feature values
+    tree: An sklearn Tree object
+    feature_names: list
+        A list of the feature nameis
+        
+    Returns a string representing the Decision Tree rules.
+    """
+    
+    def _extract_split_rule(tree, node, dir, feature_names):
+        """Gets the splitting rule for a decision tree at a given node."""
+        feat_num = tree.feature[node]
+        feat_name = feature_names[feat_num]
+        threshold = tree.threshold[node]
+
+        if feat_num < 0:
+            return ''
+
+        if dir == 'left':
+            return '{} <= {}'.format(feat_name, threshold)
+        elif dir == 'right':
+            return '{} > {}'.format(feat_name, threshold)
+    
+    def _recurse_tree(obs, tree, node, left_rules, right_rules, rule_list=[]):
+        """Recurses down the tree and extracts the rules."""
+        if tree.children_left[node] < 0 and tree.children_right[node] < 0:
+            return ' AND '.join(rule_list)
+
+        feat_num = tree.feature[node]
+        if obs[feat_num] <= tree.threshold[node]:
+            rule_list.append(left_rules[node])
+            return _recurse_tree(obs, tree, tree.children_left[node], 
+                                 left_rules, right_rules, rule_list)
+        else:
+            rule_list.append(right_rules[node])
+            return _recurse_tree(obs, tree, tree.children_right[node],
+                                 left_rules, right_rules, rule_list)
+        
+    left_rules = [_extract_split_rule(tree, i, 'left', feature_names)
+                      for i in xrange(len(tree.feature))]
+    right_rules = [_extract_split_rule(tree, i, 'right', feature_names)
+                       for i in xrange(len(tree.feature))]
+    
+    return _recurse_tree(obs, tree, 0, left_rules, right_rules)
+
+
 def get_common_dummies(data, top_n=10, prefix_sep='_', clean_col=True):
     """Returns dummy variables, but only for the most common values.
     
