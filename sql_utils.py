@@ -1,10 +1,19 @@
 from __future__ import division
 from textwrap import dedent
 
+import numpy as np
 import pandas as pd
 import pandas.io.sql as psql
 import psycopg2
 from sqlalchemy import Column, Table, MetaData
+from sqlalchemy import all_, and_, any_, not_, or_
+from sqlalchemy import alias, between, case, cast, column, distinct, extract,\
+                       false, func, intersect, literal, literal_column,\
+                                              select, text, true
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Integer, Float,\
+                       Numeric, String
+from sqlalchemy.dialects.postgresql import aggregate_order_by
+from sqlalchemy.sql.selectable import Alias
 
 
 def _get_distribution_str(distribution_key, randomly):
@@ -230,6 +239,43 @@ def get_process_ids(conn, usename=None, print_query=False):
     return psql.read_sql(sql, conn)
 
 
+def count_distinct_values(tbl, engine):
+    """Counts the number of distinct values for each column of a table.
+    
+    Parameters
+    ----------
+    tbl : str or SQLAlchemy Table
+    engine : SQLAlchemy engine object
+    """
+
+    if not isinstance(tbl, (str, Table, Alias)):
+        raise TypeError('tbl must be of str or Table type.')
+    if isinstance(tbl, str):
+        metadata = MetaData(engine)
+        tbl = Table(tbl, metadata, autoload=True)
+
+    count_distinct_df = pd.DataFrame(columns=['column_name', 'n_distinct'])
+    for tbl_col in tbl.c:
+        group_by_alias =\
+            select([tbl_col],
+                   from_obj=tbl
+                  )\
+            .group_by(tbl_col)\
+            .alias('group_by')
+
+        count =\
+            select([func.count('*')],
+                   from_obj=group_by_alias
+                  )\
+            .execute()\
+            .scalar()
+
+        new_row = (tbl_col.name, count)
+        count_distinct_df.loc[count_distinct_df.shape[0]] = new_row
+
+    return count_distinct_df
+
+
 def kill_process(conn, pid, print_query=False):
     """Kills a specified process.
 
@@ -249,9 +295,12 @@ def kill_process(conn, pid, print_query=False):
     psql.execute(sql, conn)
 
 
-def save_df_to_db(df, table_name, engine, distribution_key=None,
-                  randomly=False, drop_table=False, print_query=False):
-    """Saves a Pandas DataFrame to a database as a table.
+def save_df_to_db(df, table_name, engine, batch_size=0,
+                  distribution_key=None, randomly=False, drop_table=False,
+                  print_query=False):
+    """Saves a Pandas DataFrame to a database as a table. This function
+    is useful if the user does not have access to SSH into the database
+    and create tables from flat CSV files.
     
     Parameters
     ----------
@@ -260,6 +309,9 @@ def save_df_to_db(df, table_name, engine, distribution_key=None,
     table_name : str
         A string indicating what we want to name the table
     engine : SQLAlchemy engine object
+    batch_size : int, default 0
+        The number indicates how many rows of the DataFrame  we would
+        like to add at a time to the table. If 0, then add all.
     distribution_key : str, default ''
         The specified distribution key, if applicable
     randomly : bool, default False
@@ -278,6 +330,7 @@ def save_df_to_db(df, table_name, engine, distribution_key=None,
             return "'{}'".format(x)
 
     def _get_data_type(col_name):
+        """Gets the data type of a Pandas DataFrame column."""
         test_entry = df[col_name].dropna().iloc[0]
         if isinstance(test_entry, (int, float)):
             return 'numeric'
@@ -285,17 +338,24 @@ def save_df_to_db(df, table_name, engine, distribution_key=None,
             return 'text'
 
     def _get_array_str(col_name):
+        """Takes a Pandas DataFrame column, creates a SQL string to
+        create an ARRAY out of it, then UNNESTs it.
+        """
+
         def _get_unnest_array_str(array_str):
+            """Adds the final UNNEST and ARRAY operators."""
             return 'UNNEST(ARRAY[{}])'.format(array_str)
 
         data_type = _get_data_type(col_name)
 
         if data_type == 'numeric':
+            # Creates a list from a numeric column
             vals_list = df[col_name]\
                 .fillna('NULL')\
                 .astype(str)\
                 .tolist()
         elif data_type == 'text':
+            # Creates a list from a text column by adding single quotes
             vals_list = df[col_name].map(_add_quotes).tolist()
         else:
             pass
@@ -303,28 +363,101 @@ def save_df_to_db(df, table_name, engine, distribution_key=None,
         array_str = ', '.join(vals_list)
         return _get_unnest_array_str(array_str)
 
-    array_str_list = [_get_array_str(col_name) for col_name in df]
-    column_query_list = ['{} AS {}'.format(arr, col_name)
-                             for arr, col_name in zip(array_str_list,
-                                                      df.columns)]
-    column_query = ', '.join(column_query_list)
+    def _from_df_type_to_sql_type(type_val):
+        """Converts a DataFrame data type to a SQL type."""
+        type_str = type_val.name
+
+        if type_str == 'object':
+            return 'TEXT'
+        elif 'int' in type_str:
+            return 'INTEGER'
+        elif 'float' in type_str:
+            return 'NUMERIC'
+
+    def _create_empty_table(df, table_name, distribution_key, randomly):
+        """Creates an empty table based on a DataFrame."""
+        # Set create table string
+        create_str = 'CREATE TABLE {} ('.format(table_name)
+
+        # Specify column names and data types
+        name_type_list = ['{} {}'.format(k, _from_df_type_to_sql_type(v))
+                              for k, v in df.dtypes.iteritems()]
+        columns_str = ',\n'.join(name_type_list)
+
+        # Set distribution key
+        distribution_str = _get_distribution_str(distribution_key, randomly)
+
+        create_table_str = '{create_str}{columns_str}) {distribution_str};'\
+            .format(**locals())
+
+        # Create the table with no rows
+        psql.execute(create_table_str, engine)
+
+    def _convert_nan_to_none(vec):
+        """Converts NaN values to None in lists."""
+        return [val if not np.isnan(val) else None for val in vec]
+
+    def _add_rows_to_table(sub_df, tbl):
+        """Adds a subset of rows to a SQL table from a DataFrame. The
+        purpose of this is to do it in batches for quicker insert time.
+        """
+
+        # Convert all DataFrame columns to lists, and create a
+        # dictionary of these lists. For numeric lists, NULL values
+        # will appear as NaN types. We will need to convert these NaN
+        # values to None so they are interpreted properly in SQL.
+        col_dict = {}
+        for col, type_val in sub_df.dtypes.iteritems():
+            # If all entries in the column for this batch are NULL, then
+            # do not include in the insert, or an error will occur if it
+            # tries to add a column of only NULL values.
+            all_null = np.all(pd.isnull(sub_df[col].tolist()))
+            if all_null:
+                break
+
+            if _from_df_type_to_sql_type(type_val) == 'TEXT':
+                col_dict[col] = sub_df[col].tolist()
+            else:
+                col_dict[col] = _convert_nan_to_none(sub_df[col].tolist())
+
+        # Apply an unnest on each
+        col_unnest_list = [(column(col), func.unnest(col_list))
+                               for col, col_list in col_dict.iteritems()]
+        col_names =  zip(*col_unnest_list)[0]
+        col_lists =  zip(*col_unnest_list)[1]
+
+        # Form a select statement
+        select_statement = select(col_lists)
+
+        # Add the rows using an insert
+        tbl.insert()\
+            .from_select(col_names,
+                         select_statement
+                        )\
+            .execute()
 
     if drop_table:
         drop_sql = 'DROP TABLE IF EXISTS {}'.format(table_name)
         psql.execute(drop_sql, engine)
 
-    distribution_str = _get_distribution_str(distribution_key, randomly)
+    _create_empty_table(df, table_name, distribution_key, randomly)
 
-    create_table_sql = '''
-    CREATE TABLE {table_name}
-       AS SELECT {column_query}
-     {distribution_str};
-    '''.format(**locals())
-    
-    if print_query:
-        print dedent(create_table_sql)
+    metadata = MetaData(engine)
+    new_tbl = Table(table_name, metadata, autoload=True)
 
-    psql.execute(create_table_sql, engine)
+    if batch_size < 0 or not isinstance(batch_size, int):
+        raise ValueError('batch_size should be a non-negative integer')
+    elif batch_size == 0:
+        _add_rows_to_table(df, new_tbl)
+    else:
+        nrows = df.shape[0]
+        batch_indices = range(0, nrows, batch_size) + [nrows]
+        
+        # Add rows in batches
+        for i in np.arange(len(batch_indices) - 1):
+            start_index = batch_indices[i]
+            stop_index = batch_indices[i+1]
+            _add_rows_to_table(df.iloc[start_index:stop_index], new_tbl)
 
 
 def save_table(selected_table, table_name, engine, distribution_key=None,
