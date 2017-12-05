@@ -395,7 +395,7 @@ def save_df_to_db(df, table_name, engine, batch_size=0,
 
     def _convert_nan_to_none(vec):
         """Converts NaN values to None in lists."""
-        return [val if not np.isnan(val) else None for val in vec]
+        return [val if not pd.isnull(val) else None for val in vec]
 
     def _add_rows_to_table(sub_df, tbl):
         """Adds a subset of rows to a SQL table from a DataFrame. The
@@ -415,14 +415,12 @@ def save_df_to_db(df, table_name, engine, batch_size=0,
             if all_null:
                 break
 
-            if _from_df_type_to_sql_type(type_val) == 'TEXT':
-                col_dict[col] = sub_df[col].tolist()
-            else:
-                col_dict[col] = _convert_nan_to_none(sub_df[col].tolist())
+            col_dict[col] = _convert_nan_to_none(sub_df[col].tolist())
 
         # Apply an unnest on each
         col_unnest_list = [(column(col), func.unnest(col_list))
                                for col, col_list in col_dict.iteritems()]
+
         col_names =  zip(*col_unnest_list)[0]
         col_lists =  zip(*col_unnest_list)[1]
 
@@ -457,7 +455,8 @@ def save_df_to_db(df, table_name, engine, batch_size=0,
         for i in np.arange(len(batch_indices) - 1):
             start_index = batch_indices[i]
             stop_index = batch_indices[i+1]
-            _add_rows_to_table(df.iloc[start_index:stop_index], new_tbl)
+            sub_df = df.iloc[start_index:stop_index]
+            _add_rows_to_table(sub_df, new_tbl)
 
 
 def save_table(selected_table, table_name, engine, distribution_key=None,
