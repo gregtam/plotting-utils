@@ -24,13 +24,27 @@ def _get_distribution_str(distribution_key, randomly):
         return 'DISTRIBUTED RANDOMLY'
     elif distribution_key is not None and not randomly:
         if isinstance(distribution_key, Column):
-            return 'DISTRIBUTED BY ({})'.format(distribution_key.name)
+            distribution_str = distribution_key.name
         elif isinstance(distribution_key, str):
-            return 'DISTRIBUTED BY ({})'.format(distribution_key)
+            distribution_str = distribution_key
+        elif isinstance(distribution_key, list):
+            if len(distribution_key) == 0:
+                raise ValueError('length of distribution_key cannot be 0.')
+            else:
+                if not isinstance(distribution_key[0], (Column, str)):
+                    raise ValueError('distribution_key must be a list of string or Column')
+                elif isinstance(distribution_key[0], Column):
+                    distribution_list = [s.name for s in distribution_key]
+                elif isinstance(distribution_key[0], str):
+                    distribution_list = distribution_key
+                distribution_str = ', '.join(distribution_list)
         else:
-            raise ValueError('distribution_key must be a string or a Column.')
+            raise ValueError('distribution_key must be a string, Column, or list.')
     else:
         raise ValueError('distribution_key and randomly cannot both be specified.')
+
+    distribution_str = 'DISTRIBUTED BY ({})'.format(distribution_str)
+    return distribution_str
     
 
 def _separate_schema_table(full_table_name, conn):
