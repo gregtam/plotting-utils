@@ -27,7 +27,10 @@ def extract_dt_rule_string(obs, tree, feature_names):
     feature_names: list
         A list of the feature nameis
         
-    Returns a string representing the Decision Tree rules.
+    Returns
+    -------
+    dt_rule_str : str
+        A string representing the Decision Tree rules.
     """
     
     def _extract_split_rule(tree, node, dir, feature_names):
@@ -64,7 +67,8 @@ def extract_dt_rule_string(obs, tree, feature_names):
     right_rules = [_extract_split_rule(tree, i, 'right', feature_names)
                        for i in xrange(len(tree.feature))]
     
-    return _recurse_tree(obs, tree, 0, left_rules, right_rules)
+    dt_rule_str = _recurse_tree(obs, tree, 0, left_rules, right_rules)
+    return dt_rule_str
 
 
 def get_common_dummies(data, top_n=10, prefix_sep='_', clean_col=True):
@@ -84,6 +88,11 @@ def get_common_dummies(data, top_n=10, prefix_sep='_', clean_col=True):
         Delimiter to use to separate prefix from column value
     clean_col : boolean, default True
         Whether to clean up the final DataFrame column names
+
+    Returns
+    -------
+    dummy_df : DataFrame
+        A DataFrame with the new dummy columns
     """
     
     if not isinstance(top_n, (int, list, dict)):
@@ -148,6 +157,11 @@ def get_list_type_dummies(data, prefix_sep='_', clean_col=True,
         Whether or not to clean up the column names
     include_prefix : bool, default True
         Whether or not to include a prefix for the table name
+
+    Returns
+    -------
+    dummy_df : DataFrame
+        A DataFrame with the new dummy columns
     """
     
     def check_in_array(val, col_array):
@@ -172,16 +186,16 @@ def get_list_type_dummies(data, prefix_sep='_', clean_col=True,
     
     distinct_vals = get_distinct_values(data)
     
-    temp_df = pd.DataFrame()
+    dummy_df = pd.DataFrame()
 
     # Create dummy variables for reason codes
     for val in distinct_vals:
-        temp_df[val] = data.map(lambda arr: check_in_array(val, arr))
+        dummy_df[val] = data.map(lambda arr: check_in_array(val, arr))
  
     if include_prefix:
-        temp_df.columns = temp_df.columns\
+        dummy_df.columns = dummy_df.columns\
             .map(lambda s: data.name + prefix_sep + s)
     if clean_col:
-        temp_df.columns = temp_df.columns.map(lambda s: _clean_col_name(s))
+        dummy_df.columns = dummy_df.columns.map(lambda s: _clean_col_name(s))
  
-    return temp_df
+    return dummy_df

@@ -28,6 +28,10 @@ def plot_compare_feat_population(data_df, x_col, y_col, normalize=False,
     normalize : bool, default False
         Whether to normalize the populations
     kwargs : Matplotlib kwargs
+
+    Returns
+    -------
+    pivot_df : DataFrame
     """
     
     def _pivot_column(df, x_col, y_col, normalize):
@@ -85,7 +89,10 @@ def plot_feature_importances(clf, feat_names, top_n=None, **kwargs):
         The number of top features to plot. If None, plot all features
     kwargs : Matplotlib keyword arguments
     
-    Returns a DataFrame of the feature importances.
+    Returns
+    -------
+    feat_imp_df : DataFrame
+        A DataFrame containing feature names and feature importances
     """
 
     clf_tuple = (DecisionTreeClassifier, DecisionTreeRegressor,
@@ -111,7 +118,8 @@ def plot_feature_importances(clf, feat_names, top_n=None, **kwargs):
     plt.xlabel('Feature Importance')
     plt.ylabel('Feature Name')
     
-    return feat_imp_df.iloc[::-1]
+    feat_imp_df = feat_imp_df.iloc[::-1]
+    return feat_imp_df
     
 
 def plot_proportion_w_confint(data_df, x_col, y_col,
@@ -124,17 +132,23 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
     ----------
     data_df : DataFrame
         DataFrame that has the x and y variables
-    x_col - The name of the x variable
-    y_col - The name of the y variable
-    top_n - The number of top features by proportion to plot
-                 (Default: 10)
-    max_ci_len - The maximum ci length (Default: 1.0)
-    show_n_obs - Whether to show the number of observations in the plot.
-                 If show_n_obs equals 'in_plot', then show on the graph.
-                 If show_n_obs equals 'in_axis', then append it to the
-                 index.
-                 (Default: None)
-    kwargs - Matplotlib kwargs
+    x_col : str
+        The name of the x variable
+    y_col : str
+        The name of the y variable
+    top_n : int, default 10
+        The number of top features by proportion to plot
+    max_ci_len : float, default 1.0
+        The maximum ci length
+    show_n_obs : bool, default None
+        Whether to show the number of observations in the plot.
+        If show_n_obs equals 'in_plot', then show on the graph.
+        If show_n_obs equals 'in_axis', then append it to the index.
+    kwargs : Matplotlib kwargs
+
+    Returns
+    -------
+    grouped_df : DataFrame
     """
     
     def _add_confint_columns(df):
@@ -205,7 +219,6 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
         elif show_n_obs is not None:
             raise ValueError("show_n_obs should be either 'in_plot' or 'in_axis'")
 
-
     
     grouped_df = data_df[[y_col, x_col]]\
         .fillna('none')\
@@ -223,22 +236,26 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
         .tail(top_n)
         
     _plot_n_obs(grouped_df, show_n_obs)
-
     _create_plot(grouped_df, **kwargs)
 
-    
     return grouped_df
 
 
 def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
     """Plots the most extreme regression coefficients.
     
-    feat_names - A list of the feature names
-    top_n - The number of most extreme features to plot. If None, plot 
-            all features (Default: None)
-    kwargs - Matplotlib keyword arguments
+    Parameters
+    ----------
+    feat_names : list
+        A list of the feature names
+    top_n : int, default None
+        The number of most extreme features to plot. If None, plot all
+        features
+    kwargs : Matplotlib keyword arguments
     
-    Returns a DataFrame of the regression coefficients.
+    Returns
+    -------
+    reg_coef_df : DataFrame
     """
     
     clf_tuple = (ElasticNet, LinearRegression, LogisticRegression)
@@ -284,8 +301,8 @@ def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
     plt.ylabel('Feature Name')
     plt.yticks(np.arange(-top_n, top_n + 1), plot_feat_names)
     
-    return reg_coef_df.iloc[::-1]
-
+    reg_coef_df = reg_coef_df.iloc[::-1]
+    return reg_coef_df
 
 def plot_roc(y_test, y_score, ax=None, title=None, **kwargs):
     """Plots the ROC curve for a binary classifier.
