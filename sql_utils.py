@@ -9,7 +9,7 @@ from sqlalchemy import Column, Table, MetaData
 from sqlalchemy import all_, and_, any_, not_, or_
 from sqlalchemy import alias, between, case, cast, column, distinct, extract,\
                        false, func, intersect, literal, literal_column,\
-                                              select, text, true
+                       select, text, true, union, union_all
 from sqlalchemy import BigInteger, Boolean, Date, DateTime, Integer, Float,\
                        Numeric, String
 from sqlalchemy.dialects.postgresql import aggregate_order_by
@@ -47,25 +47,25 @@ def _get_distribution_str(distribution_key, randomly):
     return distribution_str
     
 
-def _separate_schema_table(full_table_name, conn):
+def _separate_schema_table(full_table_name, con):
     """Separates schema name and table name"""
     if '.' in full_table_name:
         return full_table_name.split('.')
     else:
-        schema_name = psql.read_sql('SELECT current_schema();', conn).iloc[0, 0]
+        schema_name = psql.read_sql('SELECT current_schema();', con).iloc[0, 0]
         table_name = full_table_name
         return schema_name, full_table_name
 
 
 
-def clear_schema(schema_name, conn, print_query=False):
+def clear_schema(schema_name, con, print_query=False):
     """Remove all tables in a given schema.
 
     Parameters
     ----------
     schema_name : str
         Name of the schema in SQL
-    conn : A psycopg2 connection object
+    con : SQLAlchemy engine object or psycopg2 connection object
     print_query : bool, default False
         If True, print the resulting query
     """
@@ -79,21 +79,37 @@ def clear_schema(schema_name, conn, print_query=False):
     if print_query:
         print dedent(sql)
 
-    table_names = psql.read_sql(sql, conn).table_name
+    table_names = psql.read_sql(sql, con).table_name
 
     for table_name in table_names:
         del_sql = 'DROP TABLE IF EXISTS {schema_name}.{table_name};'\
             .format(**locals())
-        psql.execute(del_sql, conn)
+        psql.execute(del_sql, con)
 
 
-def get_column_names(full_table_name, conn, order_by='ordinal_position',
+def count_rows(from_obj):
+    """Counts the number of rows from a table or alias.
+
+    Parameters
+    ----------
+    from_obj : A SQLAlchemy Table or Alias object
+
+    Returns
+    -------
+    count : int
+    """
+
+    count = select([func.count('*')], from_obj=from_obj).execute().scalar()
+    return count
+
+
+def get_column_names(full_table_name, con, order_by='ordinal_position',
                      reverse=False, print_query=False):
     """Gets all of the column names of a specific table.
 
     Parameters
     ----------
-    conn : A psycopg2 connection object
+    con : SQLAlchemy engine object or psycopg2 connection object
     full_table_name : str
         Name of the table in SQL. Input can also include have the schema
         name prepended, with a '.', e.g., 'schema_name.table_name'.
@@ -104,9 +120,13 @@ def get_column_names(full_table_name, conn, order_by='ordinal_position',
         If True, then reverse the ordering
     print_query : bool, default False
         If True, print the resulting query
+
+    Returns
+    -------
+    column_names_df : DataFrame
     """
 
-    schema_name, table_name = _separate_schema_table(full_table_name, conn)
+    schema_name, table_name = _separate_schema_table(full_table_name, con)
 
     if reverse:
         reverse_key = ' DESC'
@@ -124,11 +144,26 @@ def get_column_names(full_table_name, conn, order_by='ordinal_position',
     if print_query:
         print dedent(sql)
 
-    return psql.read_sql(sql, conn)
+    column_names_df = psql.read_sql(sql, con)
+    return column_names_df
 
 
-def get_function_code(function_name, conn, print_query=False):
-    """Returns a SQL function's source code."""
+def get_function_code(function_name, con, print_query=False):
+    """Returns a SQL function's source code.
+    
+    Parameters
+    ----------
+    function_name : str
+        The name of the function
+    con : SQLAlchemy engine object or psycopg2 connection object
+    print_query : bool, default False
+        If True, print the resulting query
+
+    Returns
+    -------
+    func_code : str
+    """
+
     sql = '''
     SELECT pg_get_functiondef(oid)
       FROM pg_proc
@@ -138,20 +173,25 @@ def get_function_code(function_name, conn, print_query=False):
     if print_query:
         print dedent(sql)
 
-    return psql.read_sql(sql, conn).iloc[0, 0]
+    func_code = psql.read_sql(sql, con).iloc[0, 0]
+    return func_code
 
 
-def get_table_names(conn, schema_name=None, print_query=False):
+def get_table_names(con, schema_name=None, print_query=False):
     """Gets all the table names in the specified database.
 
     Parameters
     ----------
-    conn : A psycopg2 connection object
+    con : SQLAlchemy engine object or psycopg2 connection object
     schema_name : str
         Specify the schema of interest. If left blank, then it will 
         return all tables in the database.
     print_query : bool, default False
         If True, print the resulting query
+
+    Returns
+    -------
+    table_names_df : DataFrame
     """
 
     if schema_name is None:
@@ -168,10 +208,11 @@ def get_table_names(conn, schema_name=None, print_query=False):
     if print_query:
         print dedent(sql)
 
-    return psql.read_sql(sql, conn)
+    table_names_df = psql.read_sql(sql, con)
+    return table_names_df
 
 
-def get_percent_missing(full_table_name, conn, print_query=False):
+def get_percent_missing(full_table_name, con, print_query=False):
     """This function takes a schema name and table name as an input and
     creates a SQL query to determine the number of missing entries for
     each column. It will also determine the total number of rows in the
@@ -182,13 +223,17 @@ def get_percent_missing(full_table_name, conn, print_query=False):
     full_table_name : str
         Name of the table in SQL. Input can also include have the schema
         name prepended, with a '.', e.g., 'schema_name.table_name'.
-    conn : A psycopg2 connection object
+    con : SQLAlchemy engine object or psycopg2 connection object
     print_query : bool, default False
         If True, print the resulting query
+
+    Returns
+    -------
+    pct_df : DataFrame
     """
 
-    column_names = get_column_names(full_table_name, conn).column_name
-    schema_name, table_name = _separate_schema_table(full_table_name, conn)
+    column_names = get_column_names(full_table_name, con).column_name
+    schema_name, table_name = _separate_schema_table(full_table_name, con)
 
     num_missing_sql_list = ['SUM(({name} IS NULL)::INTEGER) AS {name}'\
                                 .format(name=name) for name in column_names]
@@ -202,7 +247,7 @@ def get_percent_missing(full_table_name, conn, print_query=False):
     '''.format(**locals())
 
     # Read in the data from the query and transpose it
-    pct_df = psql.read_sql(sql, conn).T
+    pct_df = psql.read_sql(sql, con).T
 
     # Rename the column to 'pct_null'
     pct_df.columns = ['pct_null']
@@ -222,18 +267,20 @@ def get_percent_missing(full_table_name, conn, print_query=False):
     return pct_df
 
 
-def get_process_ids(conn, usename=None, print_query=False):
+def get_process_ids(con, usename=None, print_query=False):
     """Gets the process IDs of current running activity.
 
     Parameters
     ----------
-    conn : A psycopg2 connection object
+    con : SQLAlchemy engine object or psycopg2 connection object
     usename : str, default None
         Username to filter by. If None, then do not filter.
     print_query : bool, default False
         If True, print the resulting query
 
-    Returns a Pandas DataFrame
+    Returns
+    -------
+    pid_df : DataFrame
     """
 
     if usename is None:
@@ -250,7 +297,8 @@ def get_process_ids(conn, usename=None, print_query=False):
     if print_query:
         print dedent(sql)
 
-    return psql.read_sql(sql, conn)
+    pid_df = psql.read_sql(sql, con)
+    return pid_df
 
 
 def count_distinct_values(tbl, engine):
@@ -260,6 +308,10 @@ def count_distinct_values(tbl, engine):
     ----------
     tbl : str or SQLAlchemy Table
     engine : SQLAlchemy engine object
+
+    Returns
+    -------
+    count_distinct_df : DataFrame
     """
 
     if not isinstance(tbl, (str, Table, Alias)):
@@ -290,12 +342,12 @@ def count_distinct_values(tbl, engine):
     return count_distinct_df
 
 
-def kill_process(conn, pid, print_query=False):
+def kill_process(con, pid, print_query=False):
     """Kills a specified process.
 
     Parameters
     ----------
-    conn : A psycopg2 connection object
+    con : SQLAlchemy engine object or psycopg2 connection object
     pid : int
         The process ID that we want to kill
     print_query : bool, default False
@@ -306,7 +358,7 @@ def kill_process(conn, pid, print_query=False):
     SELECT pg_cancel_backend({});
     '''.format(pid)
 
-    psql.execute(sql, conn)
+    psql.execute(sql, con)
 
 
 def save_df_to_db(df, table_name, engine, batch_size=0,
