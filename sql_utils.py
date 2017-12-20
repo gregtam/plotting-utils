@@ -87,20 +87,24 @@ def clear_schema(schema_name, con, print_query=False):
         psql.execute(del_sql, con)
 
 
-def count_rows(from_obj):
+def count_rows(from_obj, print_commas=False):
     """Counts the number of rows from a table or alias.
 
     Parameters
     ----------
     from_obj : A SQLAlchemy Table or Alias object
+    print_commas : bool, default False
+        Whether or not to print commas for the thousands separator
 
     Returns
     -------
-    count : int
+    row_count : int
     """
 
-    count = select([func.count('*')], from_obj=from_obj).execute().scalar()
-    return count
+    row_count = select([func.count('*')], from_obj=from_obj).execute().scalar()
+    if print_commas:
+        print '{:,}'.format(row_count)
+    return row_count
 
 
 def get_column_names(full_table_name, con, order_by='ordinal_position',
@@ -558,8 +562,9 @@ def save_table(selected_table, table_name, engine, distribution_key=None,
         else:
             create_str = 'CREATE TABLE {} ('.format(table_name)
 
-        # Specify column names and data types
-        columns_str = ',\n'.join(['{} {}'.format(s.name, s.type)
+        # Specify column names and data types. Double quotes allow for
+        # column names with different punctuation (e.g., spaces).
+        columns_str = ',\n'.join(['"{}" {}'.format(s.name, s.type)
                                       for s in selected_table.c])
         # Set distribution key
         distribution_str = _get_distribution_str(distribution_key, randomly)
