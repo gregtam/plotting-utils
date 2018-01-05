@@ -32,7 +32,7 @@ def _get_distribution_str(distribution_key, randomly):
                 raise ValueError('length of distribution_key cannot be 0.')
             else:
                 if not isinstance(distribution_key[0], (Column, str)):
-                    raise ValueError('distribution_key must be a list of string or Column')
+                    raise ValueError('distribution_key must be a list of string or Column.')
                 elif isinstance(distribution_key[0], Column):
                     distribution_list = [s.name for s in distribution_key]
                 elif isinstance(distribution_key[0], str):
@@ -514,7 +514,7 @@ def save_df_to_db(df, table_name, engine, batch_size=0,
     new_tbl = Table(table_name, metadata, autoload=True)
 
     if batch_size < 0 or not isinstance(batch_size, int):
-        raise ValueError('batch_size should be a non-negative integer')
+        raise ValueError('batch_size should be a non-negative integer.')
     elif batch_size == 0:
         _add_rows_to_table(df, new_tbl)
     else:

@@ -217,7 +217,7 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
                                     for sr, n_obs in zip(grouped_df.index,
                                                          grouped_df.n_obs)]
         elif show_n_obs is not None:
-            raise ValueError("show_n_obs should be either 'in_plot' or 'in_axis'")
+            raise ValueError("show_n_obs should be either 'in_plot' or 'in_axis'.")
 
     
     grouped_df = data_df[[y_col, x_col]]\
@@ -309,25 +309,37 @@ def plot_roc(y_test, y_score, ax=None, title=None, **kwargs):
     
     Parameters
     ----------
-    y_test : list, Series
+    y_test : array
         The true values of the observations.
-    y_score : list, Series
+    y_score : array
         The corresponding scores.
     ax : Matplotlib axes object, default None
     title : str, default None
         Plotting title. It will add AUC after this.
     kwargs : Matplotlib keyword arguments
+
+    Returns
+    -------
+    fpr : array
+        An array of the false positive rates
+    tpr : array
+        An array of the true positive rates
+    thresholds : array
+        The score thresholds
+    auc_score : float
+        The AUC score
     """
-    auc_val = roc_auc_score(y_test, y_score)
-    fpr, tpr, _ = roc_curve(y_test, y_score)
+
+    auc_score = roc_auc_score(y_test, y_score)
+    fpr, tpr, thresholds = roc_curve(y_test, y_score)
     
-    def _get_plot_title(title):
-        plot_title = 'AUC: {:.3f}'.format(auc_val)
+    def _get_plot_title(title, auc_score):
+        plot_title = 'AUC: {:.3f}'.format(auc_score)
         if title is not None:
             plot_title = '{}\n{}'.format(title, plot_title)
         return plot_title
     
-    plot_title = _get_plot_title(title)
+    plot_title = _get_plot_title(title, auc_score)
         
     if ax is None:
         plt.plot(fpr, tpr, **kwargs)
@@ -347,6 +359,8 @@ def plot_roc(y_test, y_score, ax=None, title=None, **kwargs):
         ax.set_ylim(0, 1)
     
     plt.tight_layout()
+
+    return fpr, tpr, thresholds, auc_score
     
     
 def save_fig(filename, directory='plots'):

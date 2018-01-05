@@ -199,3 +199,39 @@ def get_list_type_dummies(data, prefix_sep='_', clean_col=True,
         dummy_df.columns = dummy_df.columns.map(lambda s: _clean_col_name(s))
  
     return dummy_df
+
+
+def save_large_df_to_excel(df, filename, sheet_prefix='page'):
+    """Saves a large DataFrame to an excel file. A large DataFrame is
+    one that has more than 2**20 rows (the maximum that Microsoft Excel
+    can display). This function will split the rows across multiple
+    sheets.
+
+    Parameters
+    ----------
+    df : DataFrame
+        The DataFrame we wish to save
+    filename : str
+        The name of the output file
+    sheet_prefix : str, default 'page'
+        The prefix of the sheet names
+    """
+
+    writer = pd.ExcelWriter(filename, engine='xlsxwriter')
+
+    i = 0
+    while True:
+        # Remove one row to leave space for header
+        max_num_rows = 2**20 - 1
+        # Subselected DataFrame to write as a single sheet
+        temp_df = df.iloc[max_num_rows*i: max_num_rows*(i+1)]
+
+        # Terminate if we have reached the end of the DataFrame
+        if temp_df.shape[0] == 0:
+            break
+
+        # Save sheet to excel file
+        temp_df.to_excel(writer, sheet_name='{}_{}'.format(sheet_prefix, i))
+        i += 1
+
+    writer.save()
