@@ -1,3 +1,4 @@
+import os
 from itertools import chain
 
 import numpy as np
@@ -201,7 +202,7 @@ def get_list_type_dummies(data, prefix_sep='_', clean_col=True,
     return dummy_df
 
 
-def save_large_df_to_excel(df, filename, sheet_prefix='page'):
+def save_large_df_to_excel(df, file_path, sheet_prefix='page'):
     """Saves a large DataFrame to an excel file. A large DataFrame is
     one that has more than 2**20 rows (the maximum that Microsoft Excel
     can display). This function will split the rows across multiple
@@ -211,13 +212,32 @@ def save_large_df_to_excel(df, filename, sheet_prefix='page'):
     ----------
     df : DataFrame
         The DataFrame we wish to save
-    filename : str
-        The name of the output file
+    file_path : str
+        The name of the output file or the file path
     sheet_prefix : str, default 'page'
         The prefix of the sheet names
     """
 
-    writer = pd.ExcelWriter(filename, engine='xlsxwriter')
+    def _split_file_path(file_path):
+        """Returns a list representing the file path containing the file."""
+        if '/' in file_path:
+            # Split file path into a list
+            split_path = file_path.split('/')
+            # Take all except last entry and append together
+            directories = split_path
+            file_dir = '/'.join(directories[:-1])
+            file_name = directories[-1]
+
+            return file_dir, file_name
+        else:
+            # Otherwise, return current directory as '.'
+            return '.', file_name
+
+    file_dir, file_name = _split_file_path(file_path)
+    # Prevents overwriting if file already exists
+    if file_name in os.listdir(file_dir):
+        raise ValueError('Filename {} already exists'.format(file_name))
+    writer = pd.ExcelWriter(file_path, engine='xlsxwriter')
 
     i = 0
     while True:

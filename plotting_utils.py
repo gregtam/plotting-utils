@@ -11,6 +11,7 @@ from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor,\
 from statsmodels.stats.proportion import proportion_confint
 
 
+
 def plot_compare_feat_population(data_df, x_col, y_col, normalize=False,
                                  **kwargs):
     """Plots overlaid histograms of a given feature for different
@@ -303,6 +304,7 @@ def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
     
     reg_coef_df = reg_coef_df.iloc[::-1]
     return reg_coef_df
+
 
 def plot_roc(y_test, y_score, ax=None, title=None, **kwargs):
     """Plots the ROC curve for a binary classifier.
