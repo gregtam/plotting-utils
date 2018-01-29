@@ -88,6 +88,47 @@ def clear_schema(schema_name, con, print_query=False):
         psql.execute(del_sql, con)
 
 
+def count_distinct_values(tbl, engine):
+    """Counts the number of distinct values for each column of a table.
+    
+    Parameters
+    ----------
+    tbl : str or SQLAlchemy Table
+    engine : SQLAlchemy engine object
+
+    Returns
+    -------
+    count_distinct_df : DataFrame
+    """
+
+    if not isinstance(tbl, (str, Table, Alias)):
+        raise TypeError('tbl must be of str or Table type.')
+    if isinstance(tbl, str):
+        metadata = MetaData(engine)
+        tbl = Table(tbl, metadata, autoload=True)
+
+    count_distinct_df = pd.DataFrame(columns=['column_name', 'n_distinct'])
+    for tbl_col in tbl.c:
+        group_by_alias =\
+            select([tbl_col],
+                   from_obj=tbl
+                  )\
+            .group_by(tbl_col)\
+            .alias('group_by')
+
+        count =\
+            select([func.count('*')],
+                   from_obj=group_by_alias
+                  )\
+            .execute()\
+            .scalar()
+
+        new_row = (tbl_col.name, count)
+        count_distinct_df.loc[count_distinct_df.shape[0]] = new_row
+
+    return count_distinct_df
+
+
 def count_rows(from_obj, print_commas=False):
     """Counts the number of rows from a table or alias.
 
@@ -304,47 +345,6 @@ def get_process_ids(con, usename=None, print_query=False):
 
     pid_df = psql.read_sql(sql, con)
     return pid_df
-
-
-def count_distinct_values(tbl, engine):
-    """Counts the number of distinct values for each column of a table.
-    
-    Parameters
-    ----------
-    tbl : str or SQLAlchemy Table
-    engine : SQLAlchemy engine object
-
-    Returns
-    -------
-    count_distinct_df : DataFrame
-    """
-
-    if not isinstance(tbl, (str, Table, Alias)):
-        raise TypeError('tbl must be of str or Table type.')
-    if isinstance(tbl, str):
-        metadata = MetaData(engine)
-        tbl = Table(tbl, metadata, autoload=True)
-
-    count_distinct_df = pd.DataFrame(columns=['column_name', 'n_distinct'])
-    for tbl_col in tbl.c:
-        group_by_alias =\
-            select([tbl_col],
-                   from_obj=tbl
-                  )\
-            .group_by(tbl_col)\
-            .alias('group_by')
-
-        count =\
-            select([func.count('*')],
-                   from_obj=group_by_alias
-                  )\
-            .execute()\
-            .scalar()
-
-        new_row = (tbl_col.name, count)
-        count_distinct_df.loc[count_distinct_df.shape[0]] = new_row
-
-    return count_distinct_df
 
 
 def kill_process(con, pid, print_query=False):
