@@ -306,7 +306,8 @@ def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
     return reg_coef_df
 
 
-def plot_roc(y_test, y_score, ax=None, title=None, **kwargs):
+def plot_roc(y_test, y_score, ax=None, title=None, show_random_guess_line=True,
+             **kwargs):
     """Plots the ROC curve for a binary classifier.
     
     Parameters
@@ -318,6 +319,8 @@ def plot_roc(y_test, y_score, ax=None, title=None, **kwargs):
     ax : Matplotlib axes object, default None
     title : str, default None
         Plotting title. It will add AUC after this.
+    show_random_guess_line : bool, default True
+        Whether to show the random guess line
     kwargs : Matplotlib keyword arguments
 
     Returns
@@ -345,6 +348,9 @@ def plot_roc(y_test, y_score, ax=None, title=None, **kwargs):
         
     if ax is None:
         plt.plot(fpr, tpr, **kwargs)
+        if show_random_guess_line:
+            plt.plot([0, 1], [0, 1], c='black', linestyle='--')
+
         plt.title(plot_title)
         plt.xlabel('FPR')
         plt.ylabel('TPR')
@@ -353,6 +359,9 @@ def plot_roc(y_test, y_score, ax=None, title=None, **kwargs):
         plt.ylim(0, 1)
     else:
         ax.plot(fpr, tpr, **kwargs)
+        if show_random_guess_line:
+            ax.plot([0, 1], [0, 1], c='black', linestyle='--')
+
         ax.set_title(plot_title)
         ax.set_xlabel('FPR')
         ax.set_ylabel('TPR')
