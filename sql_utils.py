@@ -72,9 +72,7 @@ def clear_schema(schema_name, con, print_query=False):
     """
 
     sql = '''
-    SELECT table_name
-      FROM information_schema.tables
-     WHERE table_schema = '{schema_name}'
+    SHOW TABLES IN {schema_name};
     '''.format(**locals())
 
     if print_query:
@@ -88,13 +86,15 @@ def clear_schema(schema_name, con, print_query=False):
         psql.execute(del_sql, con)
 
 
-def count_distinct_values(tbl, engine):
+def count_distinct_values(tbl, engine, approx=False):
     """Counts the number of distinct values for each column of a table.
     
     Parameters
     ----------
     tbl : str or SQLAlchemy Table
     engine : SQLAlchemy engine object
+    approx : bool, default False
+        Whether to approximate (uses ndv() function)
 
     Returns
     -------
@@ -109,19 +109,20 @@ def count_distinct_values(tbl, engine):
 
     count_distinct_df = pd.DataFrame(columns=['column_name', 'n_distinct'])
     for tbl_col in tbl.c:
-        group_by_alias =\
-            select([tbl_col],
-                   from_obj=tbl
-                  )\
-            .group_by(tbl_col)\
-            .alias('group_by')
-
-        count =\
-            select([func.count('*')],
-                   from_obj=group_by_alias
-                  )\
-            .execute()\
-            .scalar()
+        if ndv:
+            count =\
+                select([func.ndv(column(tbl_col))],
+                       from_obj=tbl
+                      )\
+                .execute()\
+                .scalar()
+        else:
+            count =\
+                select([func.count(distinct(column(tbl_col)))],
+                       from_obj=tbl
+                      )\
+                .execute()\
+                .scalar()
 
         new_row = (tbl_col.name, count)
         count_distinct_df.loc[count_distinct_df.shape[0]] = new_row
@@ -143,7 +144,12 @@ def count_rows(from_obj, print_commas=False):
     row_count : int
     """
 
-    row_count = select([func.count('*')], from_obj=from_obj).execute().scalar()
+    row_count =\
+        select([func.count('*')],
+               from_obj=from_obj
+              )\
+        .execute()\
+        .scalar()
     if print_commas:
         print '{:,}'.format(row_count)
     return row_count
@@ -172,25 +178,31 @@ def get_column_names(full_table_name, con, order_by='ordinal_position',
     column_names_df : DataFrame
     """
 
-    schema_name, table_name = _separate_schema_table(full_table_name, con)
+    def _reorder(df, order_by):
+        """Reorders the DataFrame."""
+        if order_by not in ('ordinal_position', 'alphabetically'):
+            raise ValueError("order_by must be either 'ordinal_position' or"
+                             "'alphabetically'.")
+        if order_by == 'alphabetically':
+            df = df\
+                .sort_values('name')\
+                .reset_index(drop=True)
+        return df
 
-    if reverse:
-        reverse_key = ' DESC'
-    else:
-        reverse_key = ''
+    def _reverse(df, reverse):
+        """Reverses the DataFrame."""
+        if reverse:
+            df = df.iloc[::-1].reset_index(drop=True)
+        return df
 
-    sql = '''
-    SELECT table_name, column_name, data_type
-      FROM information_schema.columns
-     WHERE table_schema = '{schema_name}'
-       AND table_name = '{table_name}'
-     ORDER BY {order_by}{reverse_key};
-    '''.format(**locals())
-
+    sql = 'DESCRIBE {};'.format(full_table_name)
     if print_query:
-        print dedent(sql)
+        print sql
 
     column_names_df = psql.read_sql(sql, con)
+    column_names_df = _reorder(column_names_df, order_by)
+    column_names_df = _reverse(column_names_df, reverse)
+
     return column_names_df
 
 
@@ -241,18 +253,12 @@ def get_table_names(con, schema_name=None, print_query=False):
     """
 
     if schema_name is None:
-        where_clause = ''
+        sql = 'SHOW TABLES;'
     else:
-        where_clause = "WHERE table_schema = '{}'".format(schema_name)
-
-    sql = '''
-    SELECT table_name
-      FROM information_schema.tables
-     {}
-    '''.format(where_clause)
+        sql = 'SHOW TABLES IN {};'.format(schema_name)
 
     if print_query:
-        print dedent(sql)
+        print sql
 
     table_names_df = psql.read_sql(sql, con)
     return table_names_df
