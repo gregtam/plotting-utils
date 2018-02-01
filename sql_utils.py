@@ -17,6 +17,15 @@ from sqlalchemy.sql.selectable import Alias
 
 
 
+def _drop_table(table_name, schema, engine):
+    """Drops a SQL table."""
+    if schema is None:
+        drop_str = 'DROP TABLE IF EXISTS {};'.format(table_name)
+    else:
+        drop_str = 'DROP TABLE IF EXISTS {}.{};'.format(schema, table_name)
+    psql.execute(drop_str, engine)
+
+
 def _get_distribution_str(distribution_key, randomly):
     """Set distribution key string"""
     if distribution_key is None and not randomly:
@@ -46,6 +55,63 @@ def _get_distribution_str(distribution_key, randomly):
 
     distribution_str = 'DISTRIBUTED BY ({})'.format(distribution_str)
     return distribution_str
+
+
+def _from_df_type_to_sql_type(type_val):
+    """Converts a DataFrame data type to a SQL type."""
+    type_str = type_val.name
+
+    if type_str == 'object':
+        return 'STRING'
+    elif 'int' in type_str:
+        return 'INTEGER'
+    elif 'float' in type_str:
+        return 'FLOAT'
+    elif 'datetime' in type_str:
+        return 'TIMESTAMP'
+
+
+def _get_create_col_list(data, partitioned_by):
+    """Returns a list of the column names and their data types to
+    include in a CREATE TABLE query excluding ones for partitioning.
+    """
+
+    if isinstance(partitioned_by, str):
+        partition_by = [partitioned_by]
+
+    if isinstance(data, (Alias, Table)):
+        create_col_list = [_get_single_partitioned_str(data, col.name)
+                               for col in data.c
+                                   if col.name not in  partitioned_by]
+    elif isinstance(data, pd.DataFrame):
+        create_col_list = ['{} {}'.format(k, _from_df_type_to_sql_type(v))
+                               for k, v in data.dtypes.iteritems()
+                                   if k not in partitioned_by]
+    return create_col_list
+
+
+def _get_partition_col_list(data, partitioned_by):
+    """Returns a list of the column names and their data types to
+    include in the PARTITIONED BY clause of a CREATE TABLE query.
+    """
+
+    if isinstance(partitioned_by, str):
+        partitioned_by = [partitioned_by]
+
+    if isinstance(data, (Alias, Table)):
+        partition_col_list = [_get_single_partitioned_str(data, col_str)
+                                  for col_str in partitioned_by]
+    elif isinstance(data, pd.DataFrame):
+        partition_col_list = ['{} {}'.format(k, _from_df_type_to_sql_type(v))
+                                  for k, v in data.dtypes.iteritems()
+                                      if k in partitioned_by]
+    return partition_col_list
+
+
+def _get_single_partitioned_str(selected_table, col_str):
+    """Returns a string of the column name and type for partitioning."""
+    col = selected_table.c[col_str]
+    return '{} {}'.format(col.name, col.type.__visit_name__)
     
 
 def _separate_schema_table(full_table_name, con):
@@ -372,8 +438,8 @@ def kill_process(con, pid, print_query=False):
     psql.execute(sql, con)
 
 
-def save_df_to_db(df, table_name, engine, batch_size=0,
-                  distribution_key=None, randomly=False, drop_table=False,
+def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
+                  partitioned_by=[], drop_table=False, temp=False,
                   print_query=False):
     """Saves a Pandas DataFrame to a database as a table. This function
     is useful if the user does not have access to SSH into the database
@@ -389,141 +455,123 @@ def save_df_to_db(df, table_name, engine, batch_size=0,
     batch_size : int, default 0
         The number indicates how many rows of the DataFrame  we would
         like to add at a time to the table. If 0, then add all.
-    distribution_key : str, default ''
-        The specified distribution key, if applicable
-    randomly : bool, default False
-        If True, distribute the table randomly
+    schema : str, default None
+        The name of the schema
+    partitioned_by : str or list, default None
+        The specified partition key(s), if applicable
     drop_table : bool, default False
-        If True, drop the table if before creating the new table
+        If True, drop the table if it exists before creating new table
+    temp : bool, default False
+        If True, then create a temporary table instead
     print_query : bool, default False
         If True, print the resulting query
     """
 
     def _add_quotes(x):
         """Adds quotation marks to a string."""
-        if x is None:
+        if pd.isnull(x):
             return 'NULL'
         else:
             return "'{}'".format(x)
 
-    def _get_data_type(col_name):
-        """Gets the data type of a Pandas DataFrame column."""
-        test_entry = df[col_name].dropna().iloc[0]
-        if isinstance(test_entry, (int, float)):
-            return 'numeric'
-        elif isinstance(test_entry, (str)):
-            return 'text'
-
-    def _get_array_str(col_name):
-        """Takes a Pandas DataFrame column, creates a SQL string to
-        create an ARRAY out of it, then UNNESTs it.
-        """
-
-        def _get_unnest_array_str(array_str):
-            """Adds the final UNNEST and ARRAY operators."""
-            return 'UNNEST(ARRAY[{}])'.format(array_str)
-
-        data_type = _get_data_type(col_name)
-
-        if data_type == 'numeric':
-            # Creates a list from a numeric column
-            vals_list = df[col_name]\
-                .fillna('NULL')\
-                .astype(str)\
-                .tolist()
-        elif data_type == 'text':
-            # Creates a list from a text column by adding single quotes
-            vals_list = df[col_name].map(_add_quotes).tolist()
-        else:
-            pass
-
-        array_str = ', '.join(vals_list)
-        return _get_unnest_array_str(array_str)
-
-    def _from_df_type_to_sql_type(type_val):
-        """Converts a DataFrame data type to a SQL type."""
-        type_str = type_val.name
-
-        if type_str == 'object':
-            return 'TEXT'
-        elif 'int' in type_str:
-            return 'INTEGER'
-        elif 'float' in type_str:
-            return 'NUMERIC'
-
-    def _create_empty_table(df, table_name, distribution_key, randomly):
+    def _create_empty_table(df, full_table_name, engine, partitioned_by,
+                            temp, print_query):
         """Creates an empty table based on a DataFrame."""
         # Set create table string
-        create_str = 'CREATE TABLE {} ('.format(table_name)
+        if temp:
+            create_str = 'CREATE TEMP TABLE {}'.format(full_table_name)
+        else:
+            create_str = 'CREATE TABLE {}'.format(full_table_name)
 
         # Specify column names and data types
-        name_type_list = ['{} {}'.format(k, _from_df_type_to_sql_type(v))
-                              for k, v in df.dtypes.iteritems()]
-        columns_str = ',\n'.join(name_type_list)
+        create_col_list = _get_create_col_list(df, partitioned_by)
+        partition_col_list = _get_partition_col_list(df, partitioned_by)
 
-        # Set distribution key
-        distribution_str = _get_distribution_str(distribution_key, randomly)
+        sep_str = ',\n    '
+        create_col_str = sep_str.join(create_col_list)
+        partition_col_str = sep_str.join(partition_col_list)
 
-        create_table_str = '{create_str}{columns_str}) {distribution_str};'\
-            .format(**locals())
+        if len(partition_col_list) > 0:
+            create_table_str = ('{create_str} (\n'
+                                '    {create_col_str}\n'
+                                ')\n'
+                                ' PARTITIONED BY (\n'
+                                '    {partition_col_str}\n'
+                                ');'
+                               ).format(**locals())
+        else:
+            create_table_str = ('{create_str} (\n'
+                                '    {create_col_str}\n'
+                                ');'
+                               ).format(**locals())
+
+        if print_query:
+            print create_table_str
 
         # Create the table with no rows
         psql.execute(create_table_str, engine)
+
+        return create_col_list, partition_col_list
 
     def _convert_nan_to_none(vec):
         """Converts NaN values to None in lists."""
         return [val if not pd.isnull(val) else None for val in vec]
 
-    def _add_rows_to_table(sub_df, tbl):
+    def _row_to_insert(row_srs):
+        """Converts a DataFrame row to a string to be used in an INSERT
+        SQL query.
+        """
+
+        # Cast to string
+        str_row_srs = row_srs.fillna('NULL').astype(str)
+        insert_sql = ', '.join(str_row_srs)
+        insert_sql = '({})'.format(insert_sql)
+        return insert_sql
+
+    def _add_rows_to_table(sub_df, full_table_name, partition_col_list,
+                           create_col_list):
         """Adds a subset of rows to a SQL table from a DataFrame. The
         purpose of this is to do it in batches for quicker insert time.
         """
 
-        # Convert all DataFrame columns to lists, and create a
-        # dictionary of these lists. For numeric lists, NULL values
-        # will appear as NaN types. We will need to convert these NaN
-        # values to None so they are interpreted properly in SQL.
-        col_dict = {}
-        for col, type_val in sub_df.dtypes.iteritems():
-            # If all entries in the column for this batch are NULL, then
-            # do not include in the insert, or an error will occur if it
-            # tries to add a column of only NULL values.
-            all_null = np.all(pd.isnull(sub_df[col].tolist()))
-            if all_null:
-                break
+        # TODO: Incorporate inserting rows with partitions
+        insert_str = 'INSERT INTO {} VALUES\n'.format(full_table_name)
 
-            col_dict[col] = _convert_nan_to_none(sub_df[col].tolist())
+        sub_df = sub_df.copy()
+        for col_name in sub_df:
+            data_type = _from_df_type_to_sql_type(sub_df[col_name].dtypes)
+            if data_type in ['STRING', 'TIMESTAMP']:
+                sub_df[col_name] = sub_df[col_name].map(_add_quotes)
 
-        # Apply an unnest on each
-        col_unnest_list = [(column(col), func.unnest(col_list))
-                               for col, col_list in col_dict.iteritems()]
+        values_list = [_row_to_insert(sub_df.iloc[i])
+                           for i in xrange(len(sub_df))]
+        values_str = ',\n'.join(values_list)
 
-        col_names =  zip(*col_unnest_list)[0]
-        col_lists =  zip(*col_unnest_list)[1]
-
-        # Form a select statement
-        select_statement = select(col_lists)
-
-        # Add the rows using an insert
-        tbl.insert()\
-            .from_select(col_names,
-                         select_statement
-                        )\
-            .execute()
+        insert_values_str = '{insert_str}{values_str};'.format(**locals())
+        psql.execute(insert_values_str, engine)
 
     if drop_table:
-        drop_sql = 'DROP TABLE IF EXISTS {}'.format(table_name)
-        psql.execute(drop_sql, engine)
+        _drop_table(table_name, schema, engine)
 
-    _create_empty_table(df, table_name, distribution_key, randomly)
+    # Set full table name
+    if schema is None:
+        full_table_name = table_name
+    else:
+        full_table_name = '{}.{}'.format(schema, table_name)
 
-    metadata = MetaData(engine)
-    new_tbl = Table(table_name, metadata, autoload=True)
+    create_col_list, partition_col_list = _create_empty_table(df,
+                                                              full_table_name,
+                                                              engine,
+                                                              partitioned_by,
+                                                              temp,
+                                                              print_query
+                                                             )
 
     if batch_size < 0 or not isinstance(batch_size, int):
         raise ValueError('batch_size should be a non-negative integer.')
     elif batch_size == 0:
-        _add_rows_to_table(df, new_tbl)
+        _add_rows_to_table(df, full_table_name, partition_col_list,
+                           create_col_list)
     else:
         nrows = df.shape[0]
         batch_indices = range(0, nrows, batch_size) + [nrows]
@@ -533,11 +581,12 @@ def save_df_to_db(df, table_name, engine, batch_size=0,
             start_index = batch_indices[i]
             stop_index = batch_indices[i+1]
             sub_df = df.iloc[start_index:stop_index]
-            _add_rows_to_table(sub_df, new_tbl)
+            _add_rows_to_table(sub_df, full_table_name, partition_col_list,
+                               create_col_list)
 
 
-def save_table(selected_table, table_name, engine, distribution_key=None,
-               randomly=False, drop_table=False, temp=False,
+def save_table(selected_table, table_name, engine, schema=None,
+               partitioned_by=None, drop_table=False, temp=False,
                print_query=False):
     """Saves a SQLAlchemy selectable object to database.
     
@@ -548,10 +597,10 @@ def save_table(selected_table, table_name, engine, distribution_key=None,
     table_name : str
         What we want to name the table
     engine : SQLAlchemy engine object
-    distribution_key : str, default None
-        The specified distribution key, if applicable
-    randomly : bool, default False
-        If True, distribute table randomly
+    schema : str, default None
+        The name of the schema
+    partitioned_by : str or list, default None
+        The specified partition key(s), if applicable
     drop_table : bool, default False
         If True, drop the table if it exists before creating new table
     temp : bool, default False
@@ -560,24 +609,43 @@ def save_table(selected_table, table_name, engine, distribution_key=None,
         If True, print the resulting query
     """
 
-    def _create_empty_table(selected_table, table_name, engine,
-                            distribution_key, randomly, temp, print_query):
+    def _create_empty_table(selected_table, table_name, engine, schema,
+                            partitioned_by, temp, print_query):
         """Creates an empty table based on a SQLAlchemy selected table."""
+        # Set full table name
+        if schema is None:
+            full_table_name = table_name
+        else:
+            full_table_name = '{}.{}'.format(schema, table_name)
+
         # Set create table string
         if temp:
-            create_str = 'CREATE TEMP TABLE {} ('.format(table_name)
+            create_str = 'CREATE TEMP TABLE {}'.format(full_table_name)
         else:
-            create_str = 'CREATE TABLE {} ('.format(table_name)
+            create_str = 'CREATE TABLE {}'.format(full_table_name)
 
         # Specify column names and data types. Double quotes allow for
         # column names with different punctuation (e.g., spaces).
-        columns_str = ',\n'.join(['"{}" {}'.format(s.name, s.type)
-                                      for s in selected_table.c])
-        # Set distribution key
-        distribution_str = _get_distribution_str(distribution_key, randomly)
+        create_col_list =_get_create_col_list(selected_table, partitioned_by)
+        partition_col_list = _get_partition_col_list(selected_table, partitioned_by)
 
-        create_table_str = '{create_str}{columns_str}) {distribution_str};'\
-            .format(**locals())
+        sep_str = ',\n    '
+        create_col_str = sep_str.join(create_col_list)
+        partition_col_str = sep_str.join(partition_col_list)
+
+        if len(partition_col_list) > 0:
+            create_table_str = ('{create_str} ('
+                                '\n    {create_col_str}'
+                                '\n)'
+                                '\n PARTITIONED BY ('
+                                '\n    {partition_col_str}'
+                                '\n);'
+                               ).format(**locals())
+        else:
+            create_table_str = ('{create_str} ('
+                                '\n    {create_col_str}'
+                                '\n);'
+                               ).format(**locals())
 
         if print_query:
             print create_table_str
@@ -586,14 +654,15 @@ def save_table(selected_table, table_name, engine, distribution_key=None,
         psql.execute(create_table_str, engine)
 
     if drop_table:
-        psql.execute('DROP TABLE IF EXISTS {};'.format(table_name), engine)
+        _drop_table(table_name, schema, engine)
 
     # Create an empty table with the desired columns
-    _create_empty_table(selected_table, table_name, engine, distribution_key,
-                        randomly, temp, print_query)
+    _create_empty_table(selected_table, table_name, engine, schema,
+                        partitioned_by, temp, print_query)
  
     metadata = MetaData(engine)
-    created_table = Table(table_name, metadata, autoload=True)
+    created_table = Table(table_name, metadata, autoload=True, schema=schema)
+
     # Insert rows from selected table into the new table
     insert_sql = created_table\
         .insert()\
