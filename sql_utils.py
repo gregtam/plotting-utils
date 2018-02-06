@@ -26,37 +26,6 @@ def _drop_table(table_name, schema, engine):
     psql.execute(drop_str, engine)
 
 
-def _get_distribution_str(distribution_key, randomly):
-    """Set distribution key string"""
-    if distribution_key is None and not randomly:
-        return ''
-    elif distribution_key is None and randomly:
-        return 'DISTRIBUTED RANDOMLY'
-    elif distribution_key is not None and not randomly:
-        if isinstance(distribution_key, Column):
-            distribution_str = distribution_key.name
-        elif isinstance(distribution_key, str):
-            distribution_str = distribution_key
-        elif isinstance(distribution_key, list):
-            if len(distribution_key) == 0:
-                raise ValueError('length of distribution_key cannot be 0.')
-            else:
-                if not isinstance(distribution_key[0], (Column, str)):
-                    raise ValueError('distribution_key must be a list of string or Column.')
-                elif isinstance(distribution_key[0], Column):
-                    distribution_list = [s.name for s in distribution_key]
-                elif isinstance(distribution_key[0], str):
-                    distribution_list = distribution_key
-                distribution_str = ', '.join(distribution_list)
-        else:
-            raise ValueError('distribution_key must be a string, Column, or list.')
-    else:
-        raise ValueError('distribution_key and randomly cannot both be specified.')
-
-    distribution_str = 'DISTRIBUTED BY ({})'.format(distribution_str)
-    return distribution_str
-
-
 def _from_df_type_to_sql_type(type_val):
     """Converts a DataFrame data type to a SQL type."""
     type_str = type_val.name
@@ -82,7 +51,7 @@ def _get_create_col_list(data, partitioned_by):
     if isinstance(data, (Alias, Table)):
         create_col_list = [_get_single_partitioned_str(data, col.name)
                                for col in data.c
-                                   if col.name not in  partitioned_by]
+                                   if col.name not in partitioned_by]
     elif isinstance(data, pd.DataFrame):
         create_col_list = ['{} {}'.format(k, _from_df_type_to_sql_type(v))
                                for k, v in data.dtypes.iteritems()
@@ -469,10 +438,53 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
 
     def _add_quotes(x):
         """Adds quotation marks to a string."""
+        # Assigns null values 'NULL'. Otherwise, they we will be set as
+        # 'None'
         if pd.isnull(x):
             return 'NULL'
         else:
             return "'{}'".format(x)
+
+    def _add_quotes_to_data(df):
+        """Adds quotes to string data types and converts missing values
+        to NULL.
+        """
+
+        df = df.copy()
+        for col_name in df:
+            data_type = _from_df_type_to_sql_type(df[col_name].dtypes)
+            if data_type in ['STRING', 'TIMESTAMP']:
+                df[col_name] = df[col_name].map(_add_quotes)
+
+        return df
+
+    def _add_rows_to_table(sub_df, full_table_name, partition_col_list,
+                           create_col_list, print_query,
+                           partition_dict=None):
+        """Adds a subset of rows to a SQL table from a DataFrame. The
+        purpose of this is to do it in batches for quicker insert time.
+        """
+
+        # TODO: Incorporate inserting rows with partitions in batches
+        insert_str = 'INSERT INTO {}\n'.format(full_table_name)
+
+        # VALUES Clause
+        values_list = [_row_to_insert(sub_df.iloc[i], partition_dict)
+                           for i in xrange(len(sub_df))]
+        values_str = 'VALUES\n{}'.format(',\n'.join(values_list))
+
+        # PARTITION Clause
+        if partition_dict is not None:
+            partition_vals_str = _get_partition_vals_str(partition_dict)
+            partition_str = 'PARTITION {}\n'.format(partition_vals_str)
+            insert_values_str = '{insert_str}{partition_str}{values_str};'\
+                .format(**locals())
+        else:
+            insert_values_str = '{insert_str}{values_str};'.format(**locals())
+
+        if print_query:
+            print insert_values_str
+        psql.execute(insert_values_str, engine)
 
     def _create_empty_table(df, full_table_name, engine, partitioned_by,
                             temp, print_query):
@@ -517,38 +529,50 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
         """Converts NaN values to None in lists."""
         return [val if not pd.isnull(val) else None for val in vec]
 
-    def _row_to_insert(row_srs):
+    def _filter_on_partition(df, partition_dict):
+        """Filters a DataFrame on a partition dictionary."""
+        sub_df = df.copy()
+        for k, v in partition_dict.iteritems():
+            if v == 'NULL':
+                sub_df = sub_df[pd.isnull(sub_df[k])]
+            else:
+                sub_df = sub_df[sub_df[k] == v]
+        return sub_df
+
+    def _get_partition_vals_str(partition_dict):
+        """Returns the partition string from the partition dict."""
+        partition_vals_str_list = ['{}={}'.format(k, v)
+                                       for k, v in partition_dict.iteritems()]
+        partition_vals_str = '({})'.format(', '.join(partition_vals_str_list))
+        return partition_vals_str
+
+    def _get_partition_vals(df, parititoned_by):
+        """Gets the values used for partitioning."""
+        distinct_df = df[partitioned_by].drop_duplicates()
+
+        partition_vals = [row.fillna('NULL').to_dict()
+                              for i, row in distinct_df.iterrows()]
+        return partition_vals
+
+    def _row_to_insert(row_srs, partition_val=None):
         """Converts a DataFrame row to a string to be used in an INSERT
         SQL query.
         """
 
-        # Cast to string
+        # Fills missing numeric columns with NULL, then casts the
+        # remaining columns to string
         str_row_srs = row_srs.fillna('NULL').astype(str)
+
+        # Don't put partition columns into VALUES portion of query.
+        if partition_val is not None:
+            str_row_srs = str_row_srs.drop(partition_val.keys())
+
         insert_sql = ', '.join(str_row_srs)
         insert_sql = '({})'.format(insert_sql)
         return insert_sql
 
-    def _add_rows_to_table(sub_df, full_table_name, partition_col_list,
-                           create_col_list):
-        """Adds a subset of rows to a SQL table from a DataFrame. The
-        purpose of this is to do it in batches for quicker insert time.
-        """
-
-        # TODO: Incorporate inserting rows with partitions
-        insert_str = 'INSERT INTO {} VALUES\n'.format(full_table_name)
-
-        sub_df = sub_df.copy()
-        for col_name in sub_df:
-            data_type = _from_df_type_to_sql_type(sub_df[col_name].dtypes)
-            if data_type in ['STRING', 'TIMESTAMP']:
-                sub_df[col_name] = sub_df[col_name].map(_add_quotes)
-
-        values_list = [_row_to_insert(sub_df.iloc[i])
-                           for i in xrange(len(sub_df))]
-        values_str = ',\n'.join(values_list)
-
-        insert_values_str = '{insert_str}{values_str};'.format(**locals())
-        psql.execute(insert_values_str, engine)
+    if batch_size < 0 or not isinstance(batch_size, int):
+        raise ValueError('batch_size should be a non-negative integer.')
 
     if drop_table:
         _drop_table(table_name, schema, engine)
@@ -566,27 +590,38 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
                                                               temp,
                                                               print_query
                                                              )
+    df = _add_quotes_to_data(df)
 
-    if batch_size < 0 or not isinstance(batch_size, int):
-        raise ValueError('batch_size should be a non-negative integer.')
-    elif batch_size == 0:
-        _add_rows_to_table(df, full_table_name, partition_col_list,
-                           create_col_list)
-    else:
-        nrows = df.shape[0]
-        batch_indices = range(0, nrows, batch_size) + [nrows]
-        
-        # Add rows in batches
-        for i in np.arange(len(batch_indices) - 1):
-            start_index = batch_indices[i]
-            stop_index = batch_indices[i+1]
-            sub_df = df.iloc[start_index:stop_index]
+    if isinstance(partitioned_by, str):
+        partitioned_by = [partitioned_by]
+
+    if len(partitioned_by) > 0:
+        # List of dicts representing the partitions
+        partition_vals = _get_partition_vals(df, partitioned_by)
+        for partition_dict in partition_vals:
+            sub_df = _filter_on_partition(df, partition_dict)
             _add_rows_to_table(sub_df, full_table_name, partition_col_list,
-                               create_col_list)
+                               create_col_list, print_query, partition_dict)
+
+    else:
+        if batch_size == 0:
+            _add_rows_to_table(df, full_table_name, partition_col_list,
+                               create_col_list, print_query)
+        else:
+            nrows = df.shape[0]
+            batch_indices = range(0, nrows, batch_size) + [nrows]
+
+            # Add rows in batches
+            for i in np.arange(len(batch_indices) - 1):
+                start_index = batch_indices[i]
+                stop_index = batch_indices[i+1]
+                sub_df = df.iloc[start_index:stop_index]
+                _add_rows_to_table(sub_df, full_table_name, partition_col_list,
+                                   create_col_list, print_query)
 
 
 def save_table(selected_table, table_name, engine, schema=None,
-               partitioned_by=None, drop_table=False, temp=False,
+               partitioned_by=[], drop_table=False, temp=False,
                print_query=False):
     """Saves a SQLAlchemy selectable object to database.
     
