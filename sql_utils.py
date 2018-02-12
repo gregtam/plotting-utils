@@ -408,8 +408,7 @@ def kill_process(con, pid, print_query=False):
 
 
 def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
-                  partitioned_by=[], drop_table=False, temp=False,
-                  print_query=False):
+                  partitioned_by=[], drop_table=False, print_query=False):
     """Saves a Pandas DataFrame to a database as a table. This function
     is useful if the user does not have access to SSH into the database
     and create tables from flat CSV files.
@@ -430,8 +429,6 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
         The specified partition key(s), if applicable
     drop_table : bool, default False
         If True, drop the table if it exists before creating new table
-    temp : bool, default False
-        If True, then create a temporary table instead
     print_query : bool, default False
         If True, print the resulting query
     """
@@ -487,13 +484,10 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
         psql.execute(insert_values_str, engine)
 
     def _create_empty_table(df, full_table_name, engine, partitioned_by,
-                            temp, print_query):
+                            print_query):
         """Creates an empty table based on a DataFrame."""
         # Set create table string
-        if temp:
-            create_str = 'CREATE TEMP TABLE {}'.format(full_table_name)
-        else:
-            create_str = 'CREATE TABLE {}'.format(full_table_name)
+        create_str = 'CREATE TABLE {}'.format(full_table_name)
 
         # Specify column names and data types
         create_col_list = _get_create_col_list(df, partitioned_by)
@@ -587,7 +581,6 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
                                                               full_table_name,
                                                               engine,
                                                               partitioned_by,
-                                                              temp,
                                                               print_query
                                                              )
     df = _add_quotes_to_data(df)
@@ -621,8 +614,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
 
 
 def save_table(selected_table, table_name, engine, schema=None,
-               partitioned_by=[], drop_table=False, temp=False,
-               print_query=False):
+               partitioned_by=[], drop_table=False, print_query=False):
     """Saves a SQLAlchemy selectable object to database.
     
     Parameters
@@ -638,14 +630,12 @@ def save_table(selected_table, table_name, engine, schema=None,
         The specified partition key(s), if applicable
     drop_table : bool, default False
         If True, drop the table if it exists before creating new table
-    temp : bool, default False
-        If True, then create a temporary table instead
     print_query : str, default False
         If True, print the resulting query
     """
 
     def _create_empty_table(selected_table, table_name, engine, schema,
-                            partitioned_by, temp, print_query):
+                            partitioned_by, print_query):
         """Creates an empty table based on a SQLAlchemy selected table."""
         # Set full table name
         if schema is None:
@@ -654,10 +644,7 @@ def save_table(selected_table, table_name, engine, schema=None,
             full_table_name = '{}.{}'.format(schema, table_name)
 
         # Set create table string
-        if temp:
-            create_str = 'CREATE TEMP TABLE {}'.format(full_table_name)
-        else:
-            create_str = 'CREATE TABLE {}'.format(full_table_name)
+        create_str = 'CREATE TABLE {}'.format(full_table_name)
 
         # Specify column names and data types. Double quotes allow for
         # column names with different punctuation (e.g., spaces).
@@ -693,7 +680,7 @@ def save_table(selected_table, table_name, engine, schema=None,
 
     # Create an empty table with the desired columns
     _create_empty_table(selected_table, table_name, engine, schema,
-                        partitioned_by, temp, print_query)
+                        partitioned_by, print_query)
  
     metadata = MetaData(engine)
     created_table = Table(table_name, metadata, autoload=True, schema=schema)
