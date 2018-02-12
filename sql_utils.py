@@ -17,12 +17,16 @@ from sqlalchemy.sql.selectable import Alias
 
 
 
-def _drop_table(table_name, schema, engine):
+def _drop_table(table_name, schema, engine, print_query=False):
     """Drops a SQL table."""
     if schema is None:
         drop_str = 'DROP TABLE IF EXISTS {};'.format(table_name)
     else:
         drop_str = 'DROP TABLE IF EXISTS {}.{};'.format(schema, table_name)
+
+    if print_query:
+        print drop_str
+
     psql.execute(drop_str, engine)
 
 
@@ -676,7 +680,7 @@ def save_table(selected_table, table_name, engine, schema=None,
         psql.execute(create_table_str, engine)
 
     if drop_table:
-        _drop_table(table_name, schema, engine)
+        _drop_table(table_name, schema, engine, print_query)
 
     # Create an empty table with the desired columns
     _create_empty_table(selected_table, table_name, engine, schema,
