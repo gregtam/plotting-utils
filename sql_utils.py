@@ -85,7 +85,7 @@ def _get_single_partitioned_str(selected_table, col_str):
     """Returns a string of the column name and type for partitioning."""
     col = selected_table.c[col_str]
     return '{} {}'.format(col.name, col.type.__visit_name__)
-    
+
 
 def _separate_schema_table(full_table_name, con):
     """Separates schema name and table name"""
@@ -127,7 +127,7 @@ def clear_schema(schema_name, con, print_query=False):
 
 def count_distinct_values(tbl, engine, approx=False):
     """Counts the number of distinct values for each column of a table.
-    
+
     Parameters
     ----------
     tbl : str or SQLAlchemy Table
@@ -247,7 +247,7 @@ def get_column_names(full_table_name, con, order_by='ordinal_position',
 
 def get_function_code(function_name, con, print_query=False):
     """Returns a SQL function's source code.
-    
+
     Parameters
     ----------
     function_name : str
@@ -281,7 +281,7 @@ def get_table_names(con, schema_name=None, print_query=False):
     ----------
     con : SQLAlchemy engine object or psycopg2 connection object
     schema_name : str
-        Specify the schema of interest. If left blank, then it will 
+        Specify the schema of interest. If left blank, then it will
         return all tables in the database.
     print_query : bool, default False
         If True, print the resulting query
@@ -416,7 +416,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
     """Saves a Pandas DataFrame to a database as a table. This function
     is useful if the user does not have access to SSH into the database
     and create tables from flat CSV files.
-    
+
     Parameters
     ----------
     df : DataFrame
@@ -620,7 +620,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
 def save_table(selected_table, table_name, engine, schema=None,
                partitioned_by=[], drop_table=False, print_query=False):
     """Saves a SQLAlchemy selectable object to database.
-    
+
     Parameters
     ----------
     selected_table : SQLAlchemy selectable object
@@ -685,7 +685,7 @@ def save_table(selected_table, table_name, engine, schema=None,
     # Create an empty table with the desired columns
     _create_empty_table(selected_table, table_name, engine, schema,
                         partitioned_by, print_query)
- 
+
     metadata = MetaData(engine)
     created_table = Table(table_name, metadata, autoload=True, schema=schema)
 

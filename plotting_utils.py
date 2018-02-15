@@ -17,7 +17,7 @@ def plot_compare_feat_population(data_df, x_col, y_col, normalize=False,
     """Plots overlaid histograms of a given feature for different
     populations. Typically used to compare two populations based on the
     dependent variable.
-    
+
     Parameters
     ----------
     data_df : DataFrame
@@ -34,7 +34,7 @@ def plot_compare_feat_population(data_df, x_col, y_col, normalize=False,
     -------
     pivot_df : DataFrame
     """
-    
+
     def _pivot_column(df, x_col, y_col, normalize):
         group_by_srs = df[[y_col, x_col]]\
             .fillna('none')\
@@ -48,15 +48,15 @@ def plot_compare_feat_population(data_df, x_col, y_col, normalize=False,
                    columns=y_col,
                    values='counts'
                   )
-            
+
         # Normalize counts
         if normalize:
             for col_name in pivot_df:
                 col_sum = pivot_df[col_name].sum()
                 pivot_df[col_name] = pivot_df[col_name]/col_sum
-            
+
         pivot_df.fillna(0, inplace=True)
-        
+
         return pivot_df
 
     pivot_df = _pivot_column(data_df, x_col, y_col, normalize)
@@ -73,13 +73,13 @@ def plot_compare_feat_population(data_df, x_col, y_col, normalize=False,
     else:
         plt.ylabel(y_label)
     plt.tight_layout()
-    
+
     return pivot_df
 
 
 def plot_feature_importances(clf, feat_names, top_n=None, **kwargs):
     """Plots the top feature importances.
-    
+
     Parameters
     ----------
     clf : A DecisionTreeClassifier, DecisionTreeRegressor,
@@ -89,7 +89,7 @@ def plot_feature_importances(clf, feat_names, top_n=None, **kwargs):
     top_n : int, default None
         The number of top features to plot. If None, plot all features
     kwargs : Matplotlib keyword arguments
-    
+
     Returns
     -------
     feat_imp_df : DataFrame
@@ -100,35 +100,35 @@ def plot_feature_importances(clf, feat_names, top_n=None, **kwargs):
                  RandomForestClassifier, RandomForestRegressor)
     if not isinstance(clf, clf_tuple):
         raise TypeError('clf should be one of (RandomForestClassifier, RandomForestRegressor, RandomForestClassifier, RandomForestRegressor)')
-        
+
     feat_imp_df = pd.DataFrame()
     feat_imp_df['feat_name'] = feat_names
     feat_imp_df['feat_importance'] = clf.feature_importances_
-    
+
     feat_imp_df = feat_imp_df\
         .set_index('feat_name')\
         .sort_values('feat_importance')
-        
+
     if top_n is not None:
         plot_df = feat_imp_df.tail(top_n)
     else:
         plot_df = feat_imp_df
-        
+
     plot_df.plot(kind='barh', legend=None)
-    
+
     plt.xlabel('Feature Importance')
     plt.ylabel('Feature Name')
-    
+
     feat_imp_df = feat_imp_df.iloc[::-1]
     return feat_imp_df
-    
+
 
 def plot_proportion_w_confint(data_df, x_col, y_col,
                               top_n=10, max_ci_len=1.0, show_n_obs=None,
                               **kwargs):
     """Plots the proportion of a binary variable grouped by a given
     feature.
-    
+
     Parameters
     ----------
     data_df : DataFrame
@@ -151,16 +151,16 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
     -------
     grouped_df : DataFrame
     """
-    
+
     def _add_confint_columns(df):
         """Adds the confidence interval columns to a DataFrame."""
         from statsmodels.stats.proportion import proportion_confint
-        
+
         # Get upper and lower bounds for confidence intervals
         confint_list =\
             [proportion_confint(cnt, n_obs, method='wilson')
                  for cnt, n_obs in izip(df.cnt, df.n_obs)]
-    
+
         # Transpose lists so we can insert them into the DataFrame
         confint_list = zip(*confint_list)
         # Lower bound of confidence interval
@@ -173,9 +173,9 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
         df['error_left'] = df.prop - df.ci_lower
         # Amount of error to the right of the mean
         df['error_right'] = df.ci_upper - df.prop
-        
+
         return df
-    
+
     def _create_plot(df, **kwargs):
         # Plot bars
         grouped_df\
@@ -188,7 +188,7 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
             ax.errorbar(grouped_df.prop, np.arange(len(grouped_df)),
                         xerr=[grouped_df.error_left, grouped_df.error_right],
                         fmt='o', c='black', label='Confidence Interval')
-            
+
             ax.set_xlabel('Proportion')
             ax.set_xlim(0, 1)
 
@@ -198,7 +198,7 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
             plt.errorbar(grouped_df.prop, np.arange(len(grouped_df)),
                          xerr=[grouped_df.error_left, grouped_df.error_right],
                          fmt='o', c='black', label='Confidence Interval')
-            
+
             plt.xlabel('Proportion')
             plt.xlim(0, 1)
 
@@ -220,22 +220,22 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
         elif show_n_obs is not None:
             raise ValueError("show_n_obs should be either 'in_plot' or 'in_axis'.")
 
-    
+
     grouped_df = data_df[[y_col, x_col]]\
         .fillna('none')\
         .groupby(x_col)\
         .agg([np.sum, np.size, np.mean])
-        
+
     grouped_df.columns = ['cnt', 'n_obs', 'prop']
-    
+
     grouped_df = _add_confint_columns(grouped_df)
-    
+
     # Sort values, filter by interval length, and take the top features
     grouped_df = grouped_df\
         .sort_values('prop')\
         .query('ci_length < @max_ci_len')\
         .tail(top_n)
-        
+
     _plot_n_obs(grouped_df, show_n_obs)
     _create_plot(grouped_df, **kwargs)
 
@@ -244,7 +244,7 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
 
 def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
     """Plots the most extreme regression coefficients.
-    
+
     Parameters
     ----------
     feat_names : list
@@ -253,16 +253,16 @@ def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
         The number of most extreme features to plot. If None, plot all
         features
     kwargs : Matplotlib keyword arguments
-    
+
     Returns
     -------
     reg_coef_df : DataFrame
     """
-    
+
     clf_tuple = (ElasticNet, LinearRegression, LogisticRegression)
     if not isinstance(clf, clf_tuple):
         raise TypeError('clf should be one of (ElasticNet, LinearRegression, LogisticRegression)')
-        
+
     def _create_coef_df(clf, feat_names):
         reg_coef_df = pd.DataFrame()
         reg_coef_df['feat_name'] = feat_names
@@ -274,9 +274,9 @@ def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
         return reg_coef_df\
             .set_index('feat_name')\
             .sort_values('coef')
-            
+
     reg_coef_df = _create_coef_df(clf, feat_names)
-        
+
     if top_n is not None:
         # Most negative coefficients
         reg_coef_df_head = reg_coef_df.head(top_n)
@@ -287,21 +287,21 @@ def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
         reg_coef_df_head = reg_coef_df
         # Most positive coefficients
         reg_coef_df_tail = reg_coef_df
-    
+
     # Get yticks
     plot_feat_names = reg_coef_df_head.index.tolist()\
                       + [' ']\
                       + reg_coef_df_tail.index.tolist()
-    
+
     # Plot bar chart
     plt.barh(np.arange(1, top_n+1), reg_coef_df_tail.coef, color=green)
     plt.plot([0, 0], [-top_n - 0.5, top_n + 0.5], '--', color='black')
     plt.barh(np.arange(-top_n, 0), reg_coef_df_head.coef, color=red)
-    
+
     plt.xlabel('Coefficient Value')
     plt.ylabel('Feature Name')
     plt.yticks(np.arange(-top_n, top_n + 1), plot_feat_names)
-    
+
     reg_coef_df = reg_coef_df.iloc[::-1]
     return reg_coef_df
 
@@ -309,7 +309,7 @@ def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
 def plot_roc(y_test, y_score, ax=None, title=None, show_random_guess_line=True,
              **kwargs):
     """Plots the ROC curve for a binary classifier.
-    
+
     Parameters
     ----------
     y_test : array
@@ -337,15 +337,15 @@ def plot_roc(y_test, y_score, ax=None, title=None, show_random_guess_line=True,
 
     auc_score = roc_auc_score(y_test, y_score)
     fpr, tpr, thresholds = roc_curve(y_test, y_score)
-    
+
     def _get_plot_title(title, auc_score):
         plot_title = 'AUC: {:.3f}'.format(auc_score)
         if title is not None:
             plot_title = '{}\n{}'.format(title, plot_title)
         return plot_title
-    
+
     plot_title = _get_plot_title(title, auc_score)
-        
+
     if ax is None:
         plt.plot(fpr, tpr, **kwargs)
         if show_random_guess_line:
@@ -368,12 +368,12 @@ def plot_roc(y_test, y_score, ax=None, title=None, show_random_guess_line=True,
 
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
-    
+
     plt.tight_layout()
 
     return fpr, tpr, thresholds, auc_score
-    
-    
+
+
 def save_fig(filename, directory='plots'):
     """Saves a Matplotlib figure with the date prepended to the
     filename.
