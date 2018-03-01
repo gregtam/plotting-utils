@@ -602,10 +602,12 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
 
     else:
         if batch_size == 0:
+            # Add all rows at once
             _add_rows_to_table(df, full_table_name, partition_col_list,
                                create_col_list, print_query)
         else:
             nrows = df.shape[0]
+            # Gets indices that define the start points of each batch
             batch_indices = range(0, nrows, batch_size) + [nrows]
 
             # Add rows in batches

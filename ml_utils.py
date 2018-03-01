@@ -17,6 +17,7 @@ def _clean_col_name(col_name):
         .rstrip('_')
 
 
+
 def extract_dt_rule_string(obs, tree, feature_names):
     """This function gets, for a given observation, the set of rules the
     observation follows in a Decision Tree.
