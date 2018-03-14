@@ -7,6 +7,11 @@ import pandas as pd
 
 
 def _clean_col_name(col_name):
+    """Replaces specific characters in a string with an underscore. This
+    may be necessary when creating tables in-database as these
+    characters might not be allowed in column names.
+    """
+
     replace_chars = list(' .-():/')
 
     for char in replace_chars:
@@ -16,6 +21,54 @@ def _clean_col_name(col_name):
         .lower()\
         .rstrip('_')
 
+
+
+def colour_df_by_group(df, group_col, colours=None):
+    """Colours the rows of a DataFrame, with differing colours for
+    alternating groups. This makes it easier to visually separate
+    diferent groups when viewing a DataFrame. The groups are defined by
+    the same values of a given column.
+
+    Parameters
+    ----------
+    df : DataFrame
+        The DataFrame we which to colour
+    group_col : str
+        The name of the column that defines the groups
+    colours: list, length 2, default None
+        A list of the colours of the groups. Should have CSS colour
+        formatting. If None, then defaults to the white and darkgrey CSS
+        colours.
+
+        E.g., 'background-color: #FF0000' or 'background-color: red'
+    """
+
+    def _value_to_colour_group_map(srs):
+        """Maps the value of a column to its corresponding colour group."""
+        # Unique values of the column we wish to group
+        unique_vals = srs.unique()
+        # A mapping between the value and its colour group. Groups
+        # will alternate between 0 and 1 for various values.
+        return dict([(val, colours[i%2]) for i, val in enumerate(unique_vals)])
+
+    def _get_group_colours(df, group_col, colours):
+        """Returns a DataFrame detailing the colours of each row."""
+        colour_group_map = _value_to_colour_group_map(df[group_col])
+        colour_group_srs = df[group_col].map(colour_group_map)
+
+        style_df = pd.DataFrame(columns=df.columns, index=df.index)
+        for col in style_df:
+            style_df[col] = colour_group_srs
+        return style_df
+
+    if colours is None:
+        colours = ['background-color: white', 'background-color: darkgrey']
+    if len(colours) != 2:
+        raise ValueError('colours should be of length 2.')
+
+    # Returns the styled DataFrame
+    return df.style.apply(lambda df: _get_group_colours(df, group_col, colours),
+                          axis=None)
 
 
 def extract_dt_rule_string(obs, tree, feature_names):
@@ -187,6 +240,7 @@ def get_list_type_dummies(data, prefix_sep='_', clean_col=True,
     if not isinstance(data, pd.Series):
         raise ValueError('data must be a Pandas Series.')
 
+    # Get the series' distinct values
     distinct_vals = get_distinct_values(data)
 
     dummy_df = pd.DataFrame()
@@ -199,7 +253,8 @@ def get_list_type_dummies(data, prefix_sep='_', clean_col=True,
         dummy_df.columns = dummy_df.columns\
             .map(lambda s: data.name + prefix_sep + s)
     if clean_col:
-        dummy_df.columns = dummy_df.columns.map(lambda s: _clean_col_name(s))
+        dummy_df.columns = dummy_df.columns\
+            .map(lambda s: _clean_col_name(s))
 
     return dummy_df
 

@@ -662,17 +662,17 @@ def save_table(selected_table, table_name, engine, schema=None,
         partition_col_str = sep_str.join(partition_col_list)
 
         if len(partition_col_list) > 0:
-            create_table_str = ('{create_str} ('
-                                '\n    {create_col_str}'
-                                '\n)'
-                                '\n PARTITIONED BY ('
-                                '\n    {partition_col_str}'
-                                '\n);'
+            create_table_str = ('{create_str} (\n'
+                                '    {create_col_str}\n'
+                                ')\n'
+                                ' PARTITIONED BY (\n'
+                                '    {partition_col_str}\n'
+                                ');'
                                ).format(**locals())
         else:
-            create_table_str = ('{create_str} ('
-                                '\n    {create_col_str}'
-                                '\n);'
+            create_table_str = ('{create_str} (\n'
+                                '    {create_col_str}\n'
+                                ');'
                                ).format(**locals())
 
         if print_query:
