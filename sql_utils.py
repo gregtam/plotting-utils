@@ -98,6 +98,53 @@ def _separate_schema_table(full_table_name, con):
 
 
 
+def balance_classes(data, class_col, class_size=1000, class_values=None):
+    """Balance the classes of a data set so they are evenly distributed.
+
+    Parameters
+    ----------
+    data : SQLAlchemy Alias/Table
+    class_col : str
+        The column name that we want to have even distribution of
+    class_size : int, default 1000
+        The desired number of rows of each class in our final data set
+    class_values : list, default None
+        The values that the class_col can take. If None, then find it
+        automatically.
+    """
+
+    def _subset_single_class(data, class_col, class_size, class_val):
+        """Subsets the data by a single class."""
+        class_subset =\
+            select(data.c)\
+            .where(column(class_col) == class_val)\
+            .limit(class_size)
+
+        return class_subset
+
+    # If not specified, then get all of the distinct class values from
+    # database
+    if class_values is None:
+        class_values =\
+            select([distinct(column(class_col))],
+                   from_obj=data
+                  )\
+            .execute()\
+            .fetchall()
+
+        # Converts from a list of tuples as a list of values
+        class_values = [tpl[0] for tpl in class_values]
+
+    single_class_subset_aliases =\
+        [_subset_single_class(data, class_col, class_size, class_val)
+             for class_val in class_values]
+
+    balanced_class_union =\
+        union_all(*single_class_subset_aliases)
+
+    return balanced_class_union
+
+
 def clear_schema(schema_name, con, print_query=False):
     """Remove all tables in a given schema.
 
@@ -654,7 +701,7 @@ def save_table(selected_table, table_name, engine, schema=None,
 
         # Specify column names and data types. Double quotes allow for
         # column names with different punctuation (e.g., spaces).
-        create_col_list =_get_create_col_list(selected_table, partitioned_by)
+        create_col_list = _get_create_col_list(selected_table, partitioned_by)
         partition_col_list = _get_partition_col_list(selected_table, partitioned_by)
 
         sep_str = ',\n    '
