@@ -98,7 +98,7 @@ def _separate_schema_table(full_table_name, con):
 
 
 
-def balance_classes(data, class_col, class_size=1000, class_values=None):
+def balance_classes(data, class_col, class_sizes=1000, class_values=None):
     """Balance the classes of a data set so they are evenly distributed.
 
     Parameters
@@ -106,26 +106,20 @@ def balance_classes(data, class_col, class_size=1000, class_values=None):
     data : SQLAlchemy Alias/Table
     class_col : str
         The column name that we want to have even distribution of
-    class_size : int, default 1000
-        The desired number of rows of each class in our final data set
+    class_sizes : int or dict, default 1000
+        The desired number of rows of each class in our final data set.
+            - If int, then all classes will be the same size
+            - If dict, then it should map the class value to its size.
+              Therefore, class_values should not be specified.
     class_values : list, default None
-        The values that the class_col can take. If None, then find it
-        automatically.
+        The values that the class_col can take. If None, then it will
+        find it automatically. If not None, then class_sizes should not
+        be a dict, then that will already determine the classes.
     """
 
-    def _subset_single_class(data, class_col, class_size, class_val):
-        """Subsets the data by a single class."""
-        class_subset =\
-            select(data.c)\
-            .where(column(class_col) == class_val)\
-            .limit(class_size)
-
-        return class_subset
-
-    # If not specified, then get all of the distinct class values from
-    # database
-    if class_values is None:
-        class_values =\
+    def _get_class_values(data, class_col):
+        """Gets the distinct class values from the database."""
+        class_values_tpl_list =\
             select([distinct(column(class_col))],
                    from_obj=data
                   )\
@@ -133,16 +127,54 @@ def balance_classes(data, class_col, class_size=1000, class_values=None):
             .fetchall()
 
         # Converts from a list of tuples as a list of values
-        class_values = [tpl[0] for tpl in class_values]
+        class_values = [tpl[0] for tpl in class_values_tpl_list]
+
+        return class_values
+
+    def _subset_single_class(data, class_col, class_sizes, class_val):
+        """Subsets the data by a single class."""
+        class_subset_alias =\
+            select(data.c)\
+            .where(column(class_col) == class_val)\
+            .limit(class_sizes)\
+            .alias('class_subset')
+
+        # Nests it in another select, since there is a glitch which
+        # prevents us from selecting from a union if a limit and/or
+        # order by is specified. (However, we can write it to a
+        # DataFrame).
+        return select(class_subset_alias.c)
+
+    def _subset_all_classes(data, class_col, class_sizes, class_values):
+        """Returns a list of subsetted Aliases for each class."""
+        if isinstance(class_sizes, int):
+            single_class_subset_aliases =\
+                [_subset_single_class(data, class_col, class_sizes, class_val)
+                     for class_val in class_values]
+        elif isinstance(class_sizes, dict):
+            single_class_subset_aliases =\
+                [_subset_single_class(data, class_col, class_size, class_val)
+                     for class_val, class_size in class_sizes.iteritems()]
+
+        return single_class_subset_aliases
+
+    if isinstance(class_sizes, dict) and class_values is not None:
+        raise ValueError('If class_sizes is a dict, then class_values must be '
+                         'None.')
+
+    # If class_values is a dict, then we can infer classes. Only retrieve
+    # the class values from the database if we can't infer.
+    if class_values is None and not isinstance(class_sizes, dict):
+        class_values = _get_class_values(data, class_col)
 
     single_class_subset_aliases =\
-        [_subset_single_class(data, class_col, class_size, class_val)
-             for class_val in class_values]
+        _subset_all_classes(data, class_col, class_sizes, class_values)
 
-    balanced_class_union =\
-        union_all(*single_class_subset_aliases)
+    balanced_class_union_alias =\
+        union_all(*single_class_subset_aliases)\
+        .alias('balanced_class_union')
 
-    return balanced_class_union
+    return balanced_class_union_alias
 
 
 def clear_schema(schema_name, con, print_query=False):
@@ -513,7 +545,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
         purpose of this is to do it in batches for quicker insert time.
         """
 
-        # TODO: Incorporate inserting rows with partitions in batches
+        # FIXME: Incorporate inserting rows with partitions in batches
         insert_str = 'INSERT INTO {}\n'.format(full_table_name)
 
         # VALUES Clause
@@ -729,6 +761,9 @@ def save_table(selected_table, table_name, engine, schema=None,
         psql.execute(create_table_str, engine)
 
     if drop_table:
+        # TODO: There is a delay when dropping and creating a table
+        # immediately after. Look into using cur instead of engine to
+        # potentially solve it.
         _drop_table(table_name, schema, engine, print_query)
 
     # Create an empty table with the desired columns
