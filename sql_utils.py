@@ -98,6 +98,23 @@ def _separate_schema_table(full_table_name, con):
 
 
 
+def assign_column_types(data, col_type_dict):
+    """Assign column types to a SQLAlchemy Alias. This is necessary if
+    we want to run save_tables(), since creating a blank table requires
+    data types for each column.
+
+    Parameters
+    ----------
+    data : SQLAlchemy selectable
+        The selectable object that we wish to assign column types
+    col_type_dict : dict
+        Maps the column name to its desired data type
+    """
+
+    for col_name, data_type in col_type_dict.iteritems():
+        data.c[col_name].type = data_type
+
+
 def balance_classes(data, class_col, class_sizes=1000, class_values=None):
     """Balance the classes of a data set so they are evenly distributed.
 
