@@ -1,5 +1,6 @@
-import os
 from itertools import chain
+import os
+import re
 
 import numpy as np
 import pandas as pd
@@ -23,7 +24,7 @@ def _clean_col_name(col_name):
 
 
 
-def colour_df_by_group(df, group_col, colours=None):
+def colour_df_by_group(df, group_col, colours=None, file_path=None):
     """Colours the rows of a DataFrame, with differing colours for
     alternating groups. This makes it easier to visually separate
     diferent groups when viewing a DataFrame. The groups are defined by
@@ -37,38 +38,72 @@ def colour_df_by_group(df, group_col, colours=None):
         The name of the column that defines the groups
     colours: list, length 2, default None
         A list of the colours of the groups. Should have CSS colour
-        formatting. If None, then defaults to the white and darkgrey CSS
-        colours.
+        formatting. If None, then defaults to the #FFFFFF and #AAAAAA
+        CSS colours.
 
         E.g., 'background-color: #FF0000' or 'background-color: red'
+    file_path : str, default None
+        The name of the file path to save the coloured DataFrame. If it
+        is None, then do not save. If the file path is specified
     """
 
-    def _value_to_colour_group_map(srs):
-        """Maps the value of a column to its corresponding colour group."""
-        # Unique values of the column we wish to group
-        unique_vals = srs.unique()
-        # A mapping between the value and its colour group. Groups
-        # will alternate between 0 and 1 for various values.
-        return dict([(val, colours[i%2]) for i, val in enumerate(unique_vals)])
+    def _check_for_input_errors(colours, file_path):
+        """Check parameters for errors."""
+        if not isinstance(colours, list):
+            raise ValueError('colours should be a list.')
+        elif len(colours) != 2:
+            raise ValueError('colours should be of length 2.')
+
+        if file_path and not _is_valid_colour_format(colours):
+            raise ValueError('If saving to a file, then colour names must be '
+                             'in the format #rgb or #rrggbb.')
 
     def _get_group_colours(df, group_col, colours):
         """Returns a DataFrame detailing the colours of each row."""
-        colour_group_map = _value_to_colour_group_map(df[group_col])
+        # Maps the unique values of group_col to colour groups
+        colour_group_map = _value_to_colour_group_map(df[group_col], colours)
+        # Create a Series of colours with the same indices
         colour_group_srs = df[group_col].map(colour_group_map)
 
+        # Create a DataFrame with same indices and columns as df
         style_df = pd.DataFrame(columns=df.columns, index=df.index)
+        # Fill in the rows with the colour group values
         for col in style_df:
             style_df[col] = colour_group_srs
         return style_df
 
+    def _is_valid_colour_format(colours):
+        """Checks whether the colours are in the proper format for
+        saving. To save a styled DataFrame, the colours must have the
+        format #rgb or #rrggbb.
+        """
+
+        is_valid_list = [bool(re.match('.*#([0-9a-fA-F]{3}){1,2}$', c))
+                             for c in colours]
+        return np.all(is_valid_list)
+
+    def _value_to_colour_group_map(srs, colours):
+        """Maps the value of a column to its corresponding colour group."""
+        # Unique values of the column we wish to group
+        unique_vals = srs.unique()
+        # A mapping between the value and its colour group. Groups will
+        # alternate between 0 and 1 for various values.
+        return dict([(val, colours[i%2]) for i, val in enumerate(unique_vals)])
+
+    _check_for_input_errors(colours, file_path)
+
     if colours is None:
-        colours = ['background-color: white', 'background-color: darkgrey']
-    if len(colours) != 2:
-        raise ValueError('colours should be of length 2.')
+        colours = ['background-color: #FFFFFF', 'background-color: #AAAAAA']
 
     # Returns the styled DataFrame
-    return df.style.apply(lambda df: _get_group_colours(df, group_col, colours),
-                          axis=None)
+    styled_df = df.style\
+        .apply(lambda df: _get_group_colours(df, group_col, colours),
+               axis=None)
+
+    if file_path is not None:
+        styled_df.to_excel(file_path, index=False, engine='openpyxl')
+
+    return styled_df
 
 
 def extract_dt_rule_string(obs, tree, feature_names):
