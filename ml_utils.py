@@ -44,15 +44,17 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
         E.g., 'background-color: #FF0000' or 'background-color: red'
     file_path : str, default None
         The name of the file path to save the coloured DataFrame. If it
-        is None, then do not save. If the file path is specified
+        is None, then do not save.
     """
 
     def _check_for_input_errors(colours, file_path):
         """Check parameters for errors."""
-        if not isinstance(colours, list):
-            raise ValueError('colours should be a list.')
-        elif len(colours) != 2:
-            raise ValueError('colours should be of length 2.')
+        array_like_types = (list, tuple, np.ndarray)
+        if colours is not None:
+            if not isinstance(colours, array_like_types):
+                raise ValueError('colours should be None or array-like.')
+            elif len(colours) != 2:
+                raise ValueError('colours should be of length 2.')
 
         if file_path and not _is_valid_colour_format(colours):
             raise ValueError('If saving to a file, then colour names must be '
