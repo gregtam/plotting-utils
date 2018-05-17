@@ -176,7 +176,26 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
 
         return df
 
+    def _plot_n_obs(grouped_df, show_n_obs):
+        """Plots the number of observations either as text to the right
+        of the bars or in the axis.
+        """
+
+        if show_n_obs == 'in_plot':
+            for index, n_obs in enumerate(grouped_df.n_obs):
+                n_obs_txt = 'n_obs = {:,}'.format(n_obs)
+                plt.text(0.01, index, n_obs_txt,
+                         color='white', size=12, verticalalignment='center')
+        elif show_n_obs == 'in_axis':
+            # Include number of observations in index
+            grouped_df.index = ['{} (n_obs = {:,})'.format(sr, n_obs)
+                                    for sr, n_obs in zip(grouped_df.index,
+                                                         grouped_df.n_obs)]
+        elif show_n_obs is not None:
+            raise ValueError("show_n_obs should be either 'in_plot' or 'in_axis'.")
+
     def _create_plot(df, **kwargs):
+        """Plots horizontal bars indicating the proportion."""
         # Plot bars
         grouped_df\
             .prop\
@@ -193,6 +212,7 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
             ax.set_xlim(0, 1)
 
             ax.legend(loc=0)
+
         else:
             # Plot error bars
             plt.errorbar(grouped_df.prop, np.arange(len(grouped_df)),
@@ -205,20 +225,6 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
             plt.legend(loc=0)
 
         plt.tight_layout()
-
-    def _plot_n_obs(grouped_df, show_n_obs):
-        if show_n_obs == 'in_plot':
-            for index, n_obs in enumerate(grouped_df.n_obs):
-                n_obs_txt = 'n_obs = {:,}'.format(n_obs)
-                plt.text(0.01, index, n_obs_txt,
-                         color='white', size=12, verticalalignment='center')
-        elif show_n_obs == 'in_axis':
-            # Include number of observations in index
-            grouped_df.index = ['{} (n_obs = {:,})'.format(sr, n_obs)
-                                    for sr, n_obs in zip(grouped_df.index,
-                                                         grouped_df.n_obs)]
-        elif show_n_obs is not None:
-            raise ValueError("show_n_obs should be either 'in_plot' or 'in_axis'.")
 
 
     grouped_df = data_df[[y_col, x_col]]\
@@ -261,7 +267,8 @@ def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
 
     clf_tuple = (ElasticNet, LinearRegression, LogisticRegression)
     if not isinstance(clf, clf_tuple):
-        raise TypeError('clf should be one of (ElasticNet, LinearRegression, LogisticRegression)')
+        raise TypeError('clf should be one of (ElasticNet, LinearRegression, '
+                        'LogisticRegression)')
 
     def _create_coef_df(clf, feat_names):
         reg_coef_df = pd.DataFrame()
@@ -339,6 +346,7 @@ def plot_roc(y_test, y_score, ax=None, title=None, show_random_guess_line=True,
     fpr, tpr, thresholds = roc_curve(y_test, y_score)
 
     def _get_plot_title(title, auc_score):
+        """Returns the title of the plot."""
         plot_title = 'AUC: {:.3f}'.format(auc_score)
         if title is not None:
             plot_title = '{}\n{}'.format(title, plot_title)

@@ -60,6 +60,16 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
             raise ValueError('If saving to a file, then colour names must be '
                              'in the format #rgb or #rrggbb.')
 
+    def _is_valid_colour_format(colours):
+        """Checks whether the colours are in the proper format for
+        saving. To save a styled DataFrame, the colours must have the
+        format #rgb or #rrggbb.
+        """
+
+        is_valid_list = [bool(re.match('.*#([0-9a-fA-F]{3}){1,2}$', c))
+                             for c in colours]
+        return np.all(is_valid_list)
+
     def _get_group_colours(df, group_col, colours):
         """Returns a DataFrame detailing the colours of each row."""
         # Maps the unique values of group_col to colour groups
@@ -74,16 +84,6 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
             style_df[col] = colour_group_srs
         return style_df
 
-    def _is_valid_colour_format(colours):
-        """Checks whether the colours are in the proper format for
-        saving. To save a styled DataFrame, the colours must have the
-        format #rgb or #rrggbb.
-        """
-
-        is_valid_list = [bool(re.match('.*#([0-9a-fA-F]{3}){1,2}$', c))
-                             for c in colours]
-        return np.all(is_valid_list)
-
     def _value_to_colour_group_map(srs, colours):
         """Maps the value of a column to its corresponding colour group."""
         # Unique values of the column we wish to group
@@ -91,6 +91,7 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
         # A mapping between the value and its colour group. Groups will
         # alternate between 0 and 1 for various values.
         return dict([(val, colours[i%2]) for i, val in enumerate(unique_vals)])
+
 
     _check_for_input_errors(colours, file_path)
 
@@ -257,13 +258,7 @@ def get_list_type_dummies(data, prefix_sep='_', clean_col=True,
         A DataFrame with the new dummy columns
     """
 
-    def check_in_array(val, col_array):
-        """Check if the value is in array."""
-        if col_array is None:
-            return 0
-        return int(val in col_array)
-
-    def get_distinct_values(data):
+    def _get_distinct_values(data):
         """Gets a list of all distinct values."""
         # Get reason code column (dropping nulls)
         srs = data.dropna()
@@ -274,17 +269,24 @@ def get_list_type_dummies(data, prefix_sep='_', clean_col=True,
         # Sort in alphabetical order
         return sorted(distinct_vals)
 
+    def _check_in_array(val, col_array):
+        """Check if the value is in array."""
+        if col_array is None:
+            return 0
+        return int(val in col_array)
+
+
     if not isinstance(data, pd.Series):
         raise ValueError('data must be a Pandas Series.')
 
     # Get the series' distinct values
-    distinct_vals = get_distinct_values(data)
+    distinct_vals = _get_distinct_values(data)
 
     dummy_df = pd.DataFrame()
 
     # Create dummy variables for reason codes
     for val in distinct_vals:
-        dummy_df[val] = data.map(lambda arr: check_in_array(val, arr))
+        dummy_df[val] = data.map(lambda arr: _check_in_array(val, arr))
 
     if include_prefix:
         dummy_df.columns = dummy_df.columns\
@@ -326,6 +328,7 @@ def save_large_df_to_excel(df, file_path, sheet_prefix='page'):
         else:
             # Otherwise, return current directory as '.'
             return '.', file_name
+
 
     file_dir, file_name = _split_file_path(file_path)
     # Prevents overwriting if file already exists

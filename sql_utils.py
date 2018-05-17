@@ -1,5 +1,6 @@
 from __future__ import division
 from textwrap import dedent
+from warnings import warn, Warning
 
 import numpy as np
 import pandas as pd
@@ -148,6 +149,19 @@ def balance_classes(data, class_col, class_sizes=1000, class_values=None):
 
         return class_values
 
+    def _subset_all_classes(data, class_col, class_sizes, class_values):
+        """Returns a list of subsetted Aliases for each class."""
+        if isinstance(class_sizes, int):
+            single_class_subset_aliases =\
+                [_subset_single_class(data, class_col, class_sizes, class_val)
+                     for class_val in class_values]
+        elif isinstance(class_sizes, dict):
+            single_class_subset_aliases =\
+                [_subset_single_class(data, class_col, class_size, class_val)
+                     for class_val, class_size in class_sizes.iteritems()]
+
+        return single_class_subset_aliases
+
     def _subset_single_class(data, class_col, class_sizes, class_val):
         """Subsets the data by a single class."""
         class_subset_alias =\
@@ -162,18 +176,6 @@ def balance_classes(data, class_col, class_sizes=1000, class_values=None):
         # DataFrame).
         return select(class_subset_alias.c)
 
-    def _subset_all_classes(data, class_col, class_sizes, class_values):
-        """Returns a list of subsetted Aliases for each class."""
-        if isinstance(class_sizes, int):
-            single_class_subset_aliases =\
-                [_subset_single_class(data, class_col, class_sizes, class_val)
-                     for class_val in class_values]
-        elif isinstance(class_sizes, dict):
-            single_class_subset_aliases =\
-                [_subset_single_class(data, class_col, class_size, class_val)
-                     for class_val, class_size in class_sizes.iteritems()]
-
-        return single_class_subset_aliases
 
     if isinstance(class_sizes, dict) and class_values is not None:
         raise ValueError('If class_sizes is a dict, then class_values must be '
@@ -221,13 +223,55 @@ def clear_schema(schema_name, con, print_query=False):
         psql.execute(del_sql, con)
 
 
-def count_distinct_values(tbl, engine, approx=False):
+def convert_table_to_df(tbl, limit=None):
+    """Converts a SQLAlchemy Alias or Table to a pandas DataFrame. This
+    function will use fetchall(), then convert that result to a
+    DataFrame. That way, we do not have to use a psql and an extra,
+    unneeded engine object.
+
+    Parameters
+    ----------
+    tbl : SQLAlchemy Alias/Table
+        The object, we will convert to a DataFrame.
+    limit : int, default None
+        The maximum number of rows to return. If None, return all rows.
+
+    Returns
+    -------
+    df : DataFrame
+         A DataFrame representation of the data.
+    """
+
+    def _get_column_names(tbl):
+        """Returns a list of the table's column names."""
+        return [s.name for s in tbl.c]
+
+
+    # Set the select object
+    slct = select(tbl.c)
+
+    # Assign a limit (if it exists)
+    if limit is not None:
+        slct = slct.limit(limit)
+
+    # Fetch all rows (as a list of tuples, where each tuple value
+    # represents the columns)
+    tpl_list = slct.fetchall()
+    col_names = _get_column_names(tbl)
+    df = pd.DataFrame(tpl_list, columns=col_names)
+
+    return df
+
+
+def count_distinct_values(tbl, engine=None, approx=False):
     """Counts the number of distinct values for each column of a table.
 
     Parameters
     ----------
-    tbl : str or SQLAlchemy Table
-    engine : SQLAlchemy engine object
+    tbl : str or SQLAlchemy Table/Alias
+        The object representing the table or the table name
+    engine : SQLAlchemy engine object, default None
+        The engine only needs to be specified if tbl is a string
     approx : bool, default False
         Whether to approximate (uses ndv() function)
 
@@ -236,8 +280,21 @@ def count_distinct_values(tbl, engine, approx=False):
     count_distinct_df : DataFrame
     """
 
-    if not isinstance(tbl, (str, Table, Alias)):
-        raise TypeError('tbl must be of str or Table type.')
+    def _check_for_input_errors(tbl, engine):
+        """Check parameters for errors."""
+        if not isinstance(tbl, (str, Alias, Table)):
+            raise TypeError('tbl must be of str or Alias/Table type.')
+
+        if isinstance(tbl, str) and engine is None:
+            raise ValueError('If tbl is a string, then engine must be '
+                             'specified.')
+        elif ifinstance(tbl, (Alias, Table)) and engine is not None:
+            warn('The engine field is not needed if tbl is an Alias or Table.',
+                 Warning)
+
+    _check_for_input_errors(tbl, engine)
+
+    # Choose associated table if tbl is a string
     if isinstance(tbl, str):
         metadata = MetaData(engine)
         tbl = Table(tbl, metadata, autoload=True)
@@ -313,7 +370,7 @@ def get_column_names(full_table_name, con, order_by='ordinal_position',
     column_names_df : DataFrame
     """
 
-    def _reorder(df, order_by):
+    def _reorder_df(df, order_by):
         """Reorders the DataFrame."""
         if order_by not in ('ordinal_position', 'alphabetically'):
             raise ValueError("order_by must be either 'ordinal_position' or"
@@ -324,7 +381,7 @@ def get_column_names(full_table_name, con, order_by='ordinal_position',
                 .reset_index(drop=True)
         return df
 
-    def _reverse(df, reverse):
+    def _reverse_df(df, reverse):
         """Reverses the DataFrame."""
         if reverse:
             df = df.iloc[::-1].reset_index(drop=True)
@@ -335,8 +392,8 @@ def get_column_names(full_table_name, con, order_by='ordinal_position',
         print sql
 
     column_names_df = psql.read_sql(sql, con)
-    column_names_df = _reorder(column_names_df, order_by)
-    column_names_df = _reverse(column_names_df, reverse)
+    column_names_df = _reorder_df(column_names_df, order_by)
+    column_names_df = _reverse_df(column_names_df, reverse)
 
     return column_names_df
 
@@ -533,56 +590,6 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
         If True, print the resulting query
     """
 
-    def _add_quotes(x):
-        """Adds quotation marks to a string."""
-        # Assigns null values 'NULL'. Otherwise, they we will be set as
-        # 'None'
-        if pd.isnull(x):
-            return 'NULL'
-        else:
-            return "'{}'".format(x)
-
-    def _add_quotes_to_data(df):
-        """Adds quotes to string data types and converts missing values
-        to NULL.
-        """
-
-        df = df.copy()
-        for col_name in df:
-            data_type = _from_df_type_to_sql_type(df[col_name].dtypes)
-            if data_type in ['STRING', 'TIMESTAMP']:
-                df[col_name] = df[col_name].map(_add_quotes)
-
-        return df
-
-    def _add_rows_to_table(sub_df, full_table_name, partition_col_list,
-                           create_col_list, print_query,
-                           partition_dict=None):
-        """Adds a subset of rows to a SQL table from a DataFrame. The
-        purpose of this is to do it in batches for quicker insert time.
-        """
-
-        # FIXME: Incorporate inserting rows with partitions in batches
-        insert_str = 'INSERT INTO {}\n'.format(full_table_name)
-
-        # VALUES Clause
-        values_list = [_row_to_insert(sub_df.iloc[i], partition_dict)
-                           for i in xrange(len(sub_df))]
-        values_str = 'VALUES\n{}'.format(',\n'.join(values_list))
-
-        # PARTITION Clause
-        if partition_dict is not None:
-            partition_vals_str = _get_partition_vals_str(partition_dict)
-            partition_str = 'PARTITION {}\n'.format(partition_vals_str)
-            insert_values_str = '{insert_str}{partition_str}{values_str};'\
-                .format(**locals())
-        else:
-            insert_values_str = '{insert_str}{values_str};'.format(**locals())
-
-        if print_query:
-            print insert_values_str
-        psql.execute(insert_values_str, engine)
-
     def _create_empty_table(df, full_table_name, engine, partitioned_by,
                             print_query):
         """Creates an empty table based on a DataFrame."""
@@ -619,9 +626,35 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
 
         return create_col_list, partition_col_list
 
-    def _convert_nan_to_none(vec):
-        """Converts NaN values to None in lists."""
-        return [val if not pd.isnull(val) else None for val in vec]
+    def _add_quotes_to_data(df):
+        """Adds quotes to string data types and converts missing values
+        to NULL.
+        """
+
+        df = df.copy()
+        for col_name in df:
+            data_type = _from_df_type_to_sql_type(df[col_name].dtypes)
+            if data_type in ['STRING', 'TIMESTAMP']:
+                df[col_name] = df[col_name].map(_add_quotes)
+
+        return df
+
+    def _add_quotes(x):
+        """Adds quotation marks to a string."""
+        # Assigns null values 'NULL'. Otherwise, they we will be set as
+        # 'None'
+        if pd.isnull(x):
+            return 'NULL'
+        else:
+            return "'{}'".format(x)
+
+    def _get_partition_vals(df, parititoned_by):
+        """Gets the values used for partitioning."""
+        distinct_df = df[partitioned_by].drop_duplicates()
+
+        partition_vals = [row.fillna('NULL').to_dict()
+                              for i, row in distinct_df.iterrows()]
+        return partition_vals
 
     def _filter_on_partition(df, partition_dict):
         """Filters a DataFrame on a partition dictionary."""
@@ -633,20 +666,33 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
                 sub_df = sub_df[sub_df[k] == v]
         return sub_df
 
-    def _get_partition_vals_str(partition_dict):
-        """Returns the partition string from the partition dict."""
-        partition_vals_str_list = ['{}={}'.format(k, v)
-                                       for k, v in partition_dict.iteritems()]
-        partition_vals_str = '({})'.format(', '.join(partition_vals_str_list))
-        return partition_vals_str
+    def _add_rows_to_table(sub_df, full_table_name, partition_col_list,
+                           create_col_list, print_query,
+                           partition_dict=None):
+        """Adds a subset of rows to a SQL table from a DataFrame. The
+        purpose of this is to do it in batches for quicker insert time.
+        """
 
-    def _get_partition_vals(df, parititoned_by):
-        """Gets the values used for partitioning."""
-        distinct_df = df[partitioned_by].drop_duplicates()
+        # FIXME: Incorporate inserting rows with partitions in batches
+        insert_str = 'INSERT INTO {}\n'.format(full_table_name)
 
-        partition_vals = [row.fillna('NULL').to_dict()
-                              for i, row in distinct_df.iterrows()]
-        return partition_vals
+        # VALUES Clause
+        values_list = [_row_to_insert(sub_df.iloc[i], partition_dict)
+                           for i in xrange(len(sub_df))]
+        values_str = 'VALUES\n{}'.format(',\n'.join(values_list))
+
+        # PARTITION Clause
+        if partition_dict is not None:
+            partition_vals_str = _get_partition_vals_str(partition_dict)
+            partition_str = 'PARTITION {}\n'.format(partition_vals_str)
+            insert_values_str = '{insert_str}{partition_str}{values_str};'\
+                .format(**locals())
+        else:
+            insert_values_str = '{insert_str}{values_str};'.format(**locals())
+
+        if print_query:
+            print insert_values_str
+        psql.execute(insert_values_str, engine)
 
     def _row_to_insert(row_srs, partition_val=None):
         """Converts a DataFrame row to a string to be used in an INSERT
@@ -664,6 +710,14 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
         insert_sql = ', '.join(str_row_srs)
         insert_sql = '({})'.format(insert_sql)
         return insert_sql
+
+    def _get_partition_vals_str(partition_dict):
+        """Returns the partition string from the partition dict."""
+        partition_vals_str_list = ['{}={}'.format(k, v)
+                                       for k, v in partition_dict.iteritems()]
+        partition_vals_str = '({})'.format(', '.join(partition_vals_str_list))
+        return partition_vals_str
+
 
     if batch_size < 0 or not isinstance(batch_size, int):
         raise ValueError('batch_size should be a non-negative integer.')
