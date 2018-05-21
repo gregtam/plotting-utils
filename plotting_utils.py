@@ -99,7 +99,9 @@ def plot_feature_importances(clf, feat_names, top_n=None, **kwargs):
     clf_tuple = (DecisionTreeClassifier, DecisionTreeRegressor,
                  RandomForestClassifier, RandomForestRegressor)
     if not isinstance(clf, clf_tuple):
-        raise TypeError('clf should be one of (RandomForestClassifier, RandomForestRegressor, RandomForestClassifier, RandomForestRegressor)')
+        raise TypeError('clf should be one of (RandomForestClassifier, '
+                        'RandomForestRegressor, RandomForestClassifier, '
+                        'RandomForestRegressor)')
 
     feat_imp_df = pd.DataFrame()
     feat_imp_df['feat_name'] = feat_names
@@ -123,9 +125,8 @@ def plot_feature_importances(clf, feat_names, top_n=None, **kwargs):
     return feat_imp_df
 
 
-def plot_proportion_w_confint(data_df, x_col, y_col,
-                              top_n=10, max_ci_len=1.0, show_n_obs=None,
-                              **kwargs):
+def plot_proportion_w_confint(data_df, x_col, y_col, top_n=10, max_ci_len=1.0,
+                              show_n_obs=None, **kwargs):
     """Plots the proportion of a binary variable grouped by a given
     feature.
 
@@ -154,7 +155,6 @@ def plot_proportion_w_confint(data_df, x_col, y_col,
 
     def _add_confint_columns(df):
         """Adds the confidence interval columns to a DataFrame."""
-        from statsmodels.stats.proportion import proportion_confint
 
         # Get upper and lower bounds for confidence intervals
         confint_list =\
