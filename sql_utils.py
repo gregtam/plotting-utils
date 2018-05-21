@@ -1,6 +1,6 @@
 from __future__ import division
 from textwrap import dedent
-from warnings import warn, Warning
+from warnings import warn
 
 import numpy as np
 import pandas as pd
@@ -256,7 +256,7 @@ def convert_table_to_df(tbl, limit=None):
 
     # Fetch all rows (as a list of tuples, where each tuple value
     # represents the columns)
-    tpl_list = slct.fetchall()
+    tpl_list = slct.execute().fetchall()
     col_names = _get_column_names(tbl)
     df = pd.DataFrame(tpl_list, columns=col_names)
 
@@ -288,9 +288,8 @@ def count_distinct_values(tbl, engine=None, approx=False):
         if isinstance(tbl, str) and engine is None:
             raise ValueError('If tbl is a string, then engine must be '
                              'specified.')
-        elif ifinstance(tbl, (Alias, Table)) and engine is not None:
-            warn('The engine field is not needed if tbl is an Alias or Table.',
-                 Warning)
+        elif isinstance(tbl, (Alias, Table)) and engine is not None:
+            warn('The engine field is not needed if tbl is an Alias or Table.')
 
     _check_for_input_errors(tbl, engine)
 
@@ -301,16 +300,16 @@ def count_distinct_values(tbl, engine=None, approx=False):
 
     count_distinct_df = pd.DataFrame(columns=['column_name', 'n_distinct'])
     for tbl_col in tbl.c:
-        if ndv:
+        if approx:
             count =\
-                select([func.ndv(column(tbl_col))],
+                select([func.ndv(tbl_col)],
                        from_obj=tbl
                       )\
                 .execute()\
                 .scalar()
         else:
             count =\
-                select([func.count(distinct(column(tbl_col)))],
+                select([func.count(distinct(tbl_col))],
                        from_obj=tbl
                       )\
                 .execute()\
