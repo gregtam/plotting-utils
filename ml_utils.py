@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from itertools import chain
 import os
 import re
@@ -74,20 +75,24 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
         """Returns a DataFrame detailing the colours of each row."""
         # Maps the unique values of group_col to colour groups
         colour_group_map = _value_to_colour_group_map(df[group_col], colours)
+
         # Create a Series of colours with the same indices
         colour_group_srs = df[group_col].map(colour_group_map)
 
-        # Create a DataFrame with same indices and columns as df
+        # Create an empty DataFrame with same indices and columns as df
         style_df = pd.DataFrame(columns=df.columns, index=df.index)
-        # Fill in the rows with the colour group values
+
+        # Fill in the rows of each column with the colour group values
         for col in style_df:
             style_df[col] = colour_group_srs
         return style_df
 
     def _value_to_colour_group_map(srs, colours):
         """Maps the value of a column to its corresponding colour group."""
-        # Unique values of the column we wish to group
+        # Unique values of the column we wish to group sorted in order
+        # of appearance
         unique_vals = srs.unique()
+
         # A mapping between the value and its colour group. Groups will
         # alternate between 0 and 1 for various values.
         return dict([(val, colours[i%2]) for i, val in enumerate(unique_vals)])
@@ -95,6 +100,7 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
 
     _check_for_input_errors(colours, file_path)
 
+    # Set default colours
     if colours is None:
         colours = ['background-color: #FFFFFF', 'background-color: #AAAAAA']
 
@@ -107,6 +113,66 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
         styled_df.to_excel(file_path, index=False, engine='openpyxl')
 
     return styled_df
+
+
+def date_file_path(file_path, directory='', date_format='%m%d'):
+    """Prepend the date to a file path/file name.
+
+    Parameters
+    ----------
+    file_path : str
+        The file path or file name. If it is a file path, then directory
+        must be empty.
+    directory : str, default ''
+        The directory of the file. If not empty, then file_path must be
+        just a file name.
+    date_format : str, default '%m%d'
+        The desired format of the date
+
+    Returns
+    -------
+    """
+
+    def _check_for_input_errors(file_path, directory):
+        """Check parameters for errors."""
+        if not isinstance(file_path, str):
+            raise ValueError('file_path must be a string.')
+        if not isinstance(directory, str):
+            raise ValueError('directory must be a string.')
+        if '/' in file_path and len(directory) > 0:
+            raise ValueError('Cannot specify a folder in file_path and also '
+                             'specify the directory parameter.')
+
+    def _prepend_date(file_name):
+        """Prepends the date to the file name."""
+        date_prefix = _get_date_prefix(date_format)
+        return '{}_{}'.format(date_prefix, file_name)
+
+    def _get_date_prefix(date_format):
+        """Gets the date prefix string from today's date."""
+        today_date_str = datetime.strftime(date.today(), date_format)
+        return today_date_str
+
+
+    _check_for_input_errors(file_path, directory)
+
+    if '/' not in file_path and directory == '':
+        dated_file_path = _prepend_date(file_path)
+
+    elif '/' in file_path and directory == '':
+        # Split folders and file name into a list
+        folders_and_file_name = file_path.split('/')
+        # Prepend the date just to the file name
+        folders_and_file_name[-1] = _prepend_date(folders_and_file_name[-1])
+        # Join together again to create the dated file path
+        dated_file_path = '/'.join(folders_and_file_name)
+
+    else:
+        dated_file_name = _prepend_date(file_path)
+        # Prepend directory to dated_file_name
+        dated_file_path = '{}/{}'.format(directory, dated_file_name)
+
+    return dated_file_path
 
 
 def extract_dt_rule_string(obs, tree, feature_names):
@@ -195,8 +261,12 @@ def get_common_dummies(data, top_n=10, prefix_sep='_', clean_col=True):
         raise ValueError('data must be a Pandas Series or DataFrame.')
 
     if isinstance(data, pd.Series):
+        # Gather top_n most common values
         most_common_values = data.value_counts()[:top_n].index
-        dummy_df = pd.get_dummies(data, prefix_sep=prefix_sep)[most_common_values]
+        # Create dummy variables for all values
+        all_dummy_df = pd.get_dummies(data, prefix_sep=prefix_sep)
+        # Filter by most common values
+        dummy_df = all_dummy_df[most_common_values]
 
     elif isinstance(data, pd.DataFrame):
         distinct_col_vals = {}
