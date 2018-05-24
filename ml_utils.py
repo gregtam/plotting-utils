@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from itertools import chain
+from math import log
 import os
 import re
 
@@ -34,10 +35,10 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
     Parameters
     ----------
     df : DataFrame
-        The DataFrame we which to colour
-    group_col : str
+        The DataFrame we wish to colour
+    group_col : str or list
         The name of the column that defines the groups
-    colours: list, length 2, default None
+    colours: list or list of lists, default None
         A list of the colours of the groups. Should have CSS colour
         formatting. If None, then defaults to the #FFFFFF and #AAAAAA
         CSS colours.
@@ -48,36 +49,92 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
         is None, then do not save.
     """
 
-    def _check_for_input_errors(colours, file_path):
+    def _check_for_input_errors(group_col, colours, file_path):
         """Check parameters for errors."""
         array_like_types = (list, tuple, np.ndarray)
         if colours is not None:
             if not isinstance(colours, array_like_types):
                 raise ValueError('colours should be None or array-like.')
-            elif len(colours) != 2:
-                raise ValueError('colours should be of length 2.')
+
+            if log(len(colours), 2) != len(group_col):
+                raise ValueError('colours should have length of  2 to the '
+                                 'power of however many values of group_col '
+                                 'there are.')
 
         if file_path and not _is_valid_colour_format(colours):
             raise ValueError('If saving to a file, then colour names must be '
                              'in the format #rgb or #rrggbb.')
 
-    def _is_valid_colour_format(colours):
-        """Checks whether the colours are in the proper format for
-        saving. To save a styled DataFrame, the colours must have the
-        format #rgb or #rrggbb.
+    def _is_valid_colour_format(colour):
+        """Checks whether the colour is the proper format. It should
+        be in the form 'background-color: #rrggbb', '#rrggbb', or a
+        3-tuple with red, green, and blue values in [0, 1].
         """
 
-        is_valid_list = [bool(re.match('.*#([0-9a-fA-F]{3}){1,2}$', c))
-                             for c in colours]
-        return np.all(is_valid_list)
+        pattern = '^(background-color: )?#[0-9a-fA-F]{6}'
+        if isinstance(colour, str) and not bool(re.match(pattern, colour)):
+            raise ValueError("colour should be of the form '#FFFFFF' or "
+                             "'background-color: #FFFFFF.'")
+
+        if isinstance(colour, tuple):
+            for val in tuple:
+                if val < 0 or val > 1:
+                    raise ValueError('colour tuple values should be between '
+                                     '0 and 1.')
+
+    def _listify(vals):
+        """Converts to a list if not already a list."""
+        if not isinstance(vals, list):
+            return [vals]
+        return vals
+
+    def _convert_colour_to_hex_css(colour):
+        """Convert the colour to hexadecimal (for CSS) if not already."""
+        if isinstance(colour, tuple):
+            # RGB channels in hexadecimal
+            hex_colour_list = [_convert_decimal_to_hex(dec) for dec in colour]
+            hex_value = ''.join(hex_colour_list)
+            return 'background-color: #{}'.format(hex_value)
+
+    def _convert_decimal_to_hex(rgb_float):
+        """Converts a single decimal number to hexadecimal."""
+        # Converts from [0, 1] to [0, 255]
+        rgb_num = int(255 * rgb_float)
+
+        # Converts to hex and trims off the '0x' from the beginning
+        hex_string = hex(rgb_num)[2:]
+
+        if len(hex_string) == 1:
+            # Pad with a leading 0
+            return '0{}'.format(hex_string)
+        else:
+            return hex_string
+
+    def _reshape_colours(colours):
+        """Reshapes the colours list into a numpy array so it can be
+        indexed by tuples.
+        """
+
+        # Number of dimensions
+        num_dim = log(len(colours), 2)
+        new_shape = [2] * int(num_dim)
+        return np.array(colours).reshape(*new_shape)
 
     def _get_group_colours(df, group_col, colours):
         """Returns a DataFrame detailing the colours of each row."""
-        # Maps the unique values of group_col to colour groups
-        colour_group_map = _value_to_colour_group_map(df[group_col], colours)
 
-        # Create a Series of colours with the same indices
-        colour_group_srs = df[group_col].map(colour_group_map)
+        def _retrieve_colour(indices):
+            """Retrieves the colour based off the indices."""
+            if len(indices) == 1:
+                return colours[int(indices)]
+            else:
+                return colours[tuple(indices)]
+
+        # Maps the unique values of group_col to colour groups
+        index_df = _create_index_df(df, group_col)
+
+        # Get the cell colour from the index
+        colour_group_srs = index_df.apply(_retrieve_colour, axis=1)
 
         # Create an empty DataFrame with same indices and columns as df
         style_df = pd.DataFrame(columns=df.columns, index=df.index)
@@ -87,22 +144,51 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
             style_df[col] = colour_group_srs
         return style_df
 
-    def _value_to_colour_group_map(srs, colours):
+    def _create_index_df(df, group_col):
+        """Create a DataFrame containing the indexes for colouring."""
+        # Create empty DataFrame
+        index_df = pd.DataFrame()
+
+        # Create alternating indices for each column
+        for col in group_col:
+            new_col_name = '{}_index'.format(col)
+            index_df[new_col_name] = _create_alternating_index_cols(df[col])
+
+        return index_df
+
+    def _create_alternating_index_cols(srs):
+        """Creates a Series of 0s and 1s that indicate groups of rows
+        with the same value.
+        """
+
+        index_dict = dict((v, i % 2) for i, v in enumerate(srs.unique()))
+        return srs.map(index_dict)
+
+    def _value_to_colour_group_map(df, colours):
         """Maps the value of a column to its corresponding colour group."""
         # Unique values of the column we wish to group sorted in order
         # of appearance
-        unique_vals = srs.unique()
+        unique_vals = df.drop_duplicates()
 
         # A mapping between the value and its colour group. Groups will
         # alternate between 0 and 1 for various values.
         return dict([(val, colours[i%2]) for i, val in enumerate(unique_vals)])
 
 
-    _check_for_input_errors(colours, file_path)
+    # Convert to numpy array if not already
+    group_col = _listify(group_col)
+    colours = _listify(colours)
+
+    _check_for_input_errors(group_col, colours, file_path)
 
     # Set default colours
     if colours is None:
         colours = ['background-color: #FFFFFF', 'background-color: #AAAAAA']
+    else:
+        # Converts to a single list of CSS hexadecimal colour strings
+        colours = [_convert_colour_to_hex_css(colour) for colour in colours]
+        # Reshape colours so it can be indexed by tuples
+        colours = _reshape_colours(colours)
 
     # Returns the styled DataFrame
     styled_df = df.style\

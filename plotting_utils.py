@@ -394,8 +394,9 @@ def save_fig(filename, directory='plots'):
         Where the image will be saved
     """
 
-    month = date.today().month
-    day = date.today().day
+    date_today = date.today()
+    month = date_today.month
+    day = date_today.day
 
     if filename.endswith('.png'):
         save_name = '{}/{:02d}{:02d}_{}'\
