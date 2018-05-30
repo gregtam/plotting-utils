@@ -14,7 +14,7 @@ from sqlalchemy import alias, between, case, cast, column, distinct, extract,\
 from sqlalchemy import BigInteger, Boolean, Date, DateTime, Integer, Float,\
                        Numeric, String
 from sqlalchemy.dialects.postgresql import aggregate_order_by
-from sqlalchemy.sql.selectable import Alias
+from sqlalchemy.sql.selectable import Alias, Select
 
 
 
@@ -223,18 +223,19 @@ def clear_schema(schema_name, con, print_query=False):
         psql.execute(del_sql, con)
 
 
-def convert_table_to_df(tbl, limit=None):
-    """Converts a SQLAlchemy Alias or Table to a pandas DataFrame. This
-    function will use fetchall(), then convert that result to a
-    DataFrame. That way, we do not have to use a psql and an extra,
-    unneeded engine object.
+def convert_table_to_df(data):
+    """Converts a SQLAlchemy Alias, Select, or Table to a pandas
+    DataFrame. This function will use fetchall(), then convert that
+    result to a DataFrame. That way, we do not have to use a psql and
+    an extra, unneeded engine object.
+
+    Note that because Alias and Table objects cannot be executed, they
+    will not retain the same ordering as Select objects.
 
     Parameters
     ----------
-    tbl : SQLAlchemy Alias/Table
-        The object, we will convert to a DataFrame.
-    limit : int, default None
-        The maximum number of rows to return. If None, return all rows.
+    data : SQLAlchemy Alias/Table
+        The object we will convert to a DataFrame.
 
     Returns
     -------
@@ -242,22 +243,29 @@ def convert_table_to_df(tbl, limit=None):
          A DataFrame representation of the data.
     """
 
-    def _get_column_names(tbl):
+    def _get_slct_object(data):
+        """Returns a Selectable object."""
+        if isinstance(data, (Alias, Table)):
+            # Alias and Table cannot be executed, so we must select it
+            return select(data.c)
+        elif isinstance(data, Select):
+            # An Alias can be executed, so just return itself back. Note
+            # that if we selected the Alias, it would lose any of the
+            # ordering that mmight be specified
+            return data
+
+    def _get_column_names(data):
         """Returns a list of the table's column names."""
-        return [s.name for s in tbl.c]
+        return [s.name for s in data.c]
 
 
     # Set the select object
-    slct = select(tbl.c)
-
-    # Assign a limit (if it exists)
-    if limit is not None:
-        slct = slct.limit(limit)
+    slct = _get_slct_object(data)
 
     # Fetch all rows (as a list of tuples, where each tuple value
     # represents the columns)
     tpl_list = slct.execute().fetchall()
-    col_names = _get_column_names(tbl)
+    col_names = _get_column_names(data)
     df = pd.DataFrame(tpl_list, columns=col_names)
 
     return df
