@@ -330,7 +330,7 @@ def count_distinct_values(tbl, engine=None, approx=False):
 
 
 def count_rows(from_obj, print_commas=False):
-    """Counts the number of rows from a table or alias.
+    """Counts the number of rows from a SQLAlchemy Alias or Table.
 
     Parameters
     ----------
