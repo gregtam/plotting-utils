@@ -1,3 +1,5 @@
+# TODO: Write function to clean df column names, i.e., remove spaces
+# and convert to lower case.
 from datetime import date, datetime
 from itertools import chain
 from math import log
@@ -29,7 +31,7 @@ def _clean_col_name(col_name):
 def colour_df_by_group(df, group_col, colours=None, file_path=None):
     """Colours the rows of a DataFrame, with differing colours for
     alternating groups. This makes it easier to visually separate
-    diferent groups when viewing a DataFrame. The groups are defined by
+    different groups when viewing a DataFrame. The groups are defined by
     the same values of a given column.
 
     Parameters
@@ -48,6 +50,7 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
         The name of the file path to save the coloured DataFrame. If it
         is None, then do not save.
     """
+    # TODO: Fix default colouring
 
     def _check_for_input_errors(group_col, colours, file_path):
         """Check parameters for errors."""
@@ -56,8 +59,8 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
             if not isinstance(colours, array_like_types):
                 raise ValueError('colours should be None or array-like.')
 
-            if log(len(colours), 2) != len(group_col):
-                raise ValueError('colours should have length of  2 to the '
+            if colours is not None and log(len(colours), 2) != len(group_col):
+                raise ValueError('colours should have length of 2 to the '
                                  'power of however many values of group_col '
                                  'there are.')
 
@@ -94,7 +97,14 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
             # RGB channels in hexadecimal
             hex_colour_list = [_convert_decimal_to_hex(dec) for dec in colour]
             hex_value = ''.join(hex_colour_list)
+
             return 'background-color: #{}'.format(hex_value)
+
+        elif re.match('#[0-9a-fA-F]{6}', colour):
+            return 'background-color: {}'.format(colour)
+
+        else:
+            return colour
 
     def _convert_decimal_to_hex(rgb_float):
         """Converts a single decimal number to hexadecimal."""
@@ -117,7 +127,9 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
 
         # Number of dimensions
         num_dim = log(len(colours), 2)
-        new_shape = [2] * int(num_dim)
+        # New shape should be of the form (2, 2, ...)
+        new_shape = (2,) * int(num_dim)
+
         return np.array(colours).reshape(*new_shape)
 
     def _get_group_colours(df, group_col, colours):
@@ -177,7 +189,8 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
 
     # Convert to numpy array if not already
     group_col = _listify(group_col)
-    colours = _listify(colours)
+    if colours is not None:
+        colours = _listify(colours)
 
     _check_for_input_errors(group_col, colours, file_path)
 
@@ -199,6 +212,70 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
         styled_df.to_excel(file_path, index=False, engine='openpyxl')
 
     return styled_df
+
+
+def create_balanced_train_test_splits(df, class_col, train_class_size,
+                                      n_iter=5):
+    """Creates multiple iterations of train test splits of a DataFrame,
+    where the training sets are balanced.
+
+    Parameters
+    ----------
+    df : DataFrame
+        The data that we want to use for cross validation
+    class_col : str
+        The column which we want to have even distribution of
+    train_class_size : int
+        The desired size of each class for training
+    n_iter : int, default 5
+        The number of times to iterate through different training and
+        test splits
+
+    Returns
+    -------
+    train_test_set_list : list
+        A list of tuples of training and test sets
+    """
+
+    def _create_balanced_train_df(df, class_col, train_class_size):
+        """Creates a balanced training set."""
+        class_df_list =\
+            [_subset_single_class(df, class_col, value, train_class_size)
+                 for value in class_values]
+
+        train_df = pd.concat(class_df_list)
+        return train_df
+
+    def _subset_single_class(df, class_col, value, train_class_size):
+        """Subsets a single class for training."""
+        return df[df[class_col] == value]\
+            .sample(train_class_size)
+
+    def _create_complementary_test_df(df, train_df):
+        """Creates a test set that contains the remaining data in df
+        that is not in the training set.
+        """
+
+        # Indices from the training set
+        train_indices = train_df.index
+        # Remaining indices
+        test_indices = np.setdiff1d(df.index, train_indices)
+        # Test set from indices
+        test_df = df.loc[test_indices]
+
+        return test_df
+
+    # Get the distinct class values
+    class_values = sorted(df[class_col].unique())
+
+    train_test_set_list = []
+    for i in xrange(n_iter):
+        train_df = _create_balanced_train_df(df, class_col, train_class_size)
+        test_df = _create_complementary_test_df(df, train_df)
+
+        train_test_set_list.append((train_df, test_df))
+
+    return train_test_set_list
 
 
 def date_file_path(file_path, directory='', date_format='%m%d'):
