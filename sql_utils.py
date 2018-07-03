@@ -329,6 +329,98 @@ def count_distinct_values(tbl, engine=None, approx=False):
     return count_distinct_df
 
 
+def count_distincts_by_group(data, group_by_cols, count_distinct_cols):
+    """Groups by column(s) and counts the distincts of multiple columns.
+    Since Impala cannot handle computing multiple count distincts, we
+    must do them separately, then join the results together.
+
+    Parameters
+    ----------
+    data : SQLAlchemy Alias/Table
+        The data which we want to compute our group by on
+    group_by_cols : str or list of str
+        The column(s) which we want to group by
+    count_distinct_cols : str or list of str
+        The column(s) which we want to do count the distincts on
+    """
+
+    def _convert_to_col_list(cols):
+        """Converts to a list of columns."""
+        if isinstance(cols, str):
+            return [column(cols)]
+        elif isinstance(cols, list):
+            return [column(s) for s in cols]
+
+    def _compute_single_distinct(data, group_by_col_list, count_col):
+        """Counts distincts for a single columns."""
+        group_by_slct =\
+            select(group_by_col_list
+                   + [func.count(distinct(count_col))
+                          .label('n_distinct_{}'.format(count_col.name))
+                     ],
+                   from_obj=data
+                  )\
+            .group_by(*group_by_col_list)
+
+        return group_by_slct
+
+    def _outer_join(data_1, data_2):
+        """Outer joins to grouped by objects. To be used by reduce()."""
+
+        # Specifies the join clause
+        join_cond_list = [data_1.c[col.name] == data_2.c[col.name]
+                              for col in group_by_col_list]
+        join_clause = and_(*join_cond_list)
+
+        # Remaining count columns
+        data_1_col_list =\
+            [col for col in data_1.c if col.name not in group_by_cols]
+        data_2_col_list =\
+            [col for col in data_2.c if col.name not in group_by_cols]
+
+        # Set the join
+        data_full_join = data_1\
+            .join(data_2,
+                  full=True,
+                  onclause=join_clause
+                 )
+
+        # Forms the coalesced key, so that all entries of the key are filled
+        coalesce_keys =\
+            [func.coalesce(data_1.c[col.name], data_2.c[col.name])
+                     .label(col.name)
+                 for col in group_by_col_list]
+
+        # Final Alias to return, so that it can be used in the next iteration
+        outer_join_alias =\
+            select(coalesce_keys
+                   + data_1_col_list
+                   + data_2_col_list,
+                   from_obj=data_full_join
+                  )\
+            .alias('outer_join')
+
+        return outer_join_alias
+
+
+    # Convert str list to column list
+    group_by_col_list = _convert_to_col_list(group_by_cols)
+    count_distinct_col_list = _convert_to_col_list(count_distinct_cols)
+
+    # Grouped by Aliases
+    grouped_slct_list =\
+        [_compute_single_distinct(data, group_by_col_list, count_col)
+             for count_col in count_distinct_col_list]
+    # Assign different Alias names to each
+    grouped_alias_list = [data.alias('foo_{}'.format(i))
+                              for i, data in enumerate(grouped_slct_list)]
+
+    # Join together all distinct Alias results
+    grouped_count_distinct_alias = reduce(_outer_join, grouped_alias_list)
+
+    return grouped_count_distinct_alias
+
+
 def count_rows(from_obj, print_commas=False):
     """Counts the number of rows from a SQLAlchemy Alias or Table.
 
