@@ -581,6 +581,20 @@ def get_percent_missing(full_table_name, con, print_query=False):
     return pct_df
 
 
+def print_actual_query(slct):
+    """Prints the actual SQL query from a SQLAlchemy selectable object
+    instead of with the parameters anonymized.
+
+    Parameters
+    ----------
+    slct : SQLAlchemy Select object
+        The SQLAlchemy object that we wish to print the query of
+    """
+
+    # Prints the query with proper formatting
+    print(slct.compile(compile_kwargs={'literal_binds': True}))
+
+
 def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
                   partitioned_by=[], drop_table=False, print_query=False):
     """Saves a Pandas DataFrame to a database as a table. This function
