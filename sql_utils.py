@@ -2,6 +2,8 @@ from functools import reduce
 from textwrap import dedent
 from warnings import warn
 
+from impala.sqlalchemy import BIGINT, BOOLEAN, DECIMAL, DOUBLE, FLOAT, INT,\
+                              SMALLINT, STRING, TIMESTAMP, TINYINT
 import numpy as np
 import pandas as pd
 import pandas.io.sql as psql
@@ -11,9 +13,7 @@ from sqlalchemy import all_, and_, any_, not_, or_
 from sqlalchemy import alias, between, case, cast, column, distinct, extract,\
                        false, func, intersect, literal, literal_column,\
                        select, text, true, union, union_all
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Integer, Float,\
-                       Numeric, String
-from sqlalchemy.dialects.postgresql import aggregate_order_by
+from sqlalchemy import CHAR, REAL, VARCHAR
 from sqlalchemy.sql.selectable import Alias, Select
 
 
