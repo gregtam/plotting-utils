@@ -497,35 +497,6 @@ def get_column_names(full_table_name, con, order_by='ordinal_position',
     return column_names_df
 
 
-def get_function_code(function_name, con, print_query=False):
-    """Returns a SQL function's source code.
-
-    Parameters
-    ----------
-    function_name : str
-        The name of the function
-    con : SQLAlchemy engine object or psycopg2 connection object
-    print_query : bool, default False
-        If True, print the resulting query
-
-    Returns
-    -------
-    func_code : str
-    """
-
-    sql = '''
-    SELECT pg_get_functiondef(oid)
-      FROM pg_proc
-     WHERE proname = '{function_name}'
-    '''.format(**locals())
-
-    if print_query:
-        print(dedent(sql))
-
-    func_code = psql.read_sql(sql, con).iloc[0, 0]
-    return func_code
-
-
 def get_table_names(con, schema_name=None, print_query=False):
     """Gets all the table names in the specified database.
 
@@ -608,59 +579,6 @@ def get_percent_missing(full_table_name, con, print_query=False):
         print(dedent(sql))
 
     return pct_df
-
-
-def get_process_ids(con, usename=None, print_query=False):
-    """Gets the process IDs of current running activity.
-
-    Parameters
-    ----------
-    con : SQLAlchemy engine object or psycopg2 connection object
-    usename : str, default None
-        Username to filter by. If None, then do not filter.
-    print_query : bool, default False
-        If True, print the resulting query
-
-    Returns
-    -------
-    pid_df : DataFrame
-    """
-
-    if usename is None:
-        where_clause = ''
-    else:
-        where_clause = "WHERE usename = '{}'".format(usename)
-
-    sql = '''
-    SELECT datname, procpid, usename, current_query, query_start
-      FROM pg_stat_activity
-     {}
-    '''.format(where_clause)
-
-    if print_query:
-        print(dedent(sql))
-
-    pid_df = psql.read_sql(sql, con)
-    return pid_df
-
-
-def kill_process(con, pid, print_query=False):
-    """Kills a specified process.
-
-    Parameters
-    ----------
-    con : SQLAlchemy engine object or psycopg2 connection object
-    pid : int
-        The process ID that we want to kill
-    print_query : bool, default False
-        If True, print the resulting query
-    """
-
-    sql = '''
-    SELECT pg_cancel_backend({});
-    '''.format(pid)
-
-    psql.execute(sql, con)
 
 
 def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
