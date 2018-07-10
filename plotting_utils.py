@@ -1,5 +1,5 @@
 from datetime import date
-from itertools import izip
+
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -159,10 +159,10 @@ def plot_proportion_w_confint(data_df, x_col, y_col, top_n=10, max_ci_len=1.0,
         # Get upper and lower bounds for confidence intervals
         confint_list =\
             [proportion_confint(cnt, n_obs, method='wilson')
-                 for cnt, n_obs in izip(df.cnt, df.n_obs)]
+                 for cnt, n_obs in zip(df.cnt, df.n_obs)]
 
         # Transpose lists so we can insert them into the DataFrame
-        confint_list = zip(*confint_list)
+        confint_list = list(zip(*confint_list))
         # Lower bound of confidence interval
         df['ci_lower'] = confint_list[0]
         # Upper bound of confidence interval

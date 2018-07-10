@@ -1,4 +1,4 @@
-from __future__ import division
+from functools import reduce
 from textwrap import dedent
 from warnings import warn
 
@@ -26,7 +26,7 @@ def _drop_table(table_name, schema, engine, print_query=False):
         drop_str = 'DROP TABLE IF EXISTS {}.{};'.format(schema, table_name)
 
     if print_query:
-        print drop_str
+        print(drop_str)
 
     psql.execute(drop_str, engine)
 
@@ -59,7 +59,7 @@ def _get_create_col_list(data, partitioned_by):
                                    if col.name not in partitioned_by]
     elif isinstance(data, pd.DataFrame):
         create_col_list = ['{} {}'.format(k, _from_df_type_to_sql_type(v))
-                               for k, v in data.dtypes.iteritems()
+                               for k, v in data.dtypes.items()
                                    if k not in partitioned_by]
     return create_col_list
 
@@ -77,7 +77,7 @@ def _get_partition_col_list(data, partitioned_by):
                                   for col_str in partitioned_by]
     elif isinstance(data, pd.DataFrame):
         partition_col_list = ['{} {}'.format(k, _from_df_type_to_sql_type(v))
-                                  for k, v in data.dtypes.iteritems()
+                                  for k, v in data.dtypes.items()
                                       if k in partitioned_by]
     return partition_col_list
 
@@ -112,7 +112,7 @@ def assign_column_types(data, col_type_dict):
         Maps the column name to its desired data type
     """
 
-    for col_name, data_type in col_type_dict.iteritems():
+    for col_name, data_type in col_type_dict.items():
         data.c[col_name].type = data_type
 
 
@@ -158,7 +158,7 @@ def balance_classes(data, class_col, class_sizes=1000, class_values=None):
         elif isinstance(class_sizes, dict):
             single_class_subset_aliases =\
                 [_subset_single_class(data, class_col, class_size, class_val)
-                     for class_val, class_size in class_sizes.iteritems()]
+                     for class_val, class_size in class_sizes.items()]
 
         return single_class_subset_aliases
 
@@ -213,7 +213,7 @@ def clear_schema(schema_name, con, print_query=False):
     '''.format(**locals())
 
     if print_query:
-        print dedent(sql)
+        print(dedent(sql))
 
     table_names = psql.read_sql(sql, con).table_name
 
@@ -442,7 +442,7 @@ def count_rows(from_obj, print_commas=False):
         .execute()\
         .scalar()
     if print_commas:
-        print '{:,}'.format(row_count)
+        print('{:,}'.format(row_count))
     return row_count
 
 
@@ -488,7 +488,7 @@ def get_column_names(full_table_name, con, order_by='ordinal_position',
 
     sql = 'DESCRIBE {};'.format(full_table_name)
     if print_query:
-        print sql
+        print(sql)
 
     column_names_df = psql.read_sql(sql, con)
     column_names_df = _reorder_df(column_names_df, order_by)
@@ -520,7 +520,7 @@ def get_function_code(function_name, con, print_query=False):
     '''.format(**locals())
 
     if print_query:
-        print dedent(sql)
+        print(dedent(sql))
 
     func_code = psql.read_sql(sql, con).iloc[0, 0]
     return func_code
@@ -549,7 +549,7 @@ def get_table_names(con, schema_name=None, print_query=False):
         sql = 'SHOW TABLES IN {};'.format(schema_name)
 
     if print_query:
-        print sql
+        print(sql)
 
     table_names_df = psql.read_sql(sql, con)
     return table_names_df
@@ -605,7 +605,7 @@ def get_percent_missing(full_table_name, con, print_query=False):
     pct_df['table_name'] = table_name
 
     if print_query:
-        print dedent(sql)
+        print(dedent(sql))
 
     return pct_df
 
@@ -638,7 +638,7 @@ def get_process_ids(con, usename=None, print_query=False):
     '''.format(where_clause)
 
     if print_query:
-        print dedent(sql)
+        print(dedent(sql))
 
     pid_df = psql.read_sql(sql, con)
     return pid_df
@@ -718,7 +718,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
                                ).format(**locals())
 
         if print_query:
-            print create_table_str
+            print(create_table_str)
 
         # Create the table with no rows
         psql.execute(create_table_str, engine)
@@ -758,7 +758,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
     def _filter_on_partition(df, partition_dict):
         """Filters a DataFrame on a partition dictionary."""
         sub_df = df.copy()
-        for k, v in partition_dict.iteritems():
+        for k, v in partition_dict.items():
             if v == 'NULL':
                 sub_df = sub_df[pd.isnull(sub_df[k])]
             else:
@@ -777,7 +777,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
 
         # VALUES Clause
         values_list = [_row_to_insert(sub_df.iloc[i], partition_dict)
-                           for i in xrange(len(sub_df))]
+                           for i in range(len(sub_df))]
         values_str = 'VALUES\n{}'.format(',\n'.join(values_list))
 
         # PARTITION Clause
@@ -790,7 +790,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
             insert_values_str = '{insert_str}{values_str};'.format(**locals())
 
         if print_query:
-            print insert_values_str
+            print(insert_values_str)
         psql.execute(insert_values_str, engine)
 
     def _row_to_insert(row_srs, partition_val=None):
@@ -804,7 +804,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
 
         # Don't put partition columns into VALUES portion of query.
         if partition_val is not None:
-            str_row_srs = str_row_srs.drop(partition_val.keys())
+            str_row_srs = str_row_srs.drop(list(partition_val.keys()))
 
         insert_sql = ', '.join(str_row_srs)
         insert_sql = '({})'.format(insert_sql)
@@ -813,7 +813,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
     def _get_partition_vals_str(partition_dict):
         """Returns the partition string from the partition dict."""
         partition_vals_str_list = ['{}={}'.format(k, v)
-                                       for k, v in partition_dict.iteritems()]
+                                       for k, v in partition_dict.items()]
         partition_vals_str = '({})'.format(', '.join(partition_vals_str_list))
         return partition_vals_str
 
@@ -857,7 +857,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
         else:
             nrows = df.shape[0]
             # Gets indices that define the start points of each batch
-            batch_indices = range(0, nrows, batch_size) + [nrows]
+            batch_indices = list(range(0, nrows, batch_size)) + [nrows]
 
             # Add rows in batches
             for i in np.arange(len(batch_indices) - 1):
@@ -925,7 +925,7 @@ def save_table(selected_table, table_name, engine, schema=None,
                                ).format(**locals())
 
         if print_query:
-            print create_table_str
+            print(create_table_str)
 
         # Create the table with no rows
         psql.execute(create_table_str, engine)

@@ -83,7 +83,7 @@ def create_balanced_train_test_splits(df, class_col, train_class_size,
     class_values = sorted(df[class_col].unique())
 
     train_test_set_list = []
-    for i in xrange(n_iter):
+    for i in range(n_iter):
         train_df = _create_balanced_train_df(df, class_col, train_class_size)
         test_df = _create_complementary_test_df(df, train_df)
 
@@ -140,9 +140,9 @@ def extract_dt_rule_string(obs, tree, feature_names):
                                  left_rules, right_rules, rule_list)
 
     left_rules = [_extract_split_rule(tree, i, 'left', feature_names)
-                      for i in xrange(len(tree.feature))]
+                      for i in range(len(tree.feature))]
     right_rules = [_extract_split_rule(tree, i, 'right', feature_names)
-                       for i in xrange(len(tree.feature))]
+                       for i in range(len(tree.feature))]
 
     dt_rule_str = _recurse_tree(obs, tree, 0, left_rules, right_rules)
     return dt_rule_str
@@ -204,7 +204,7 @@ def get_common_dummies(data, top_n=10, prefix_sep='_', clean_col=True):
             distinct_col_vals[col] = most_common_values
 
         # Unnest all columns into a single list
-        all_columns = list(chain(*distinct_col_vals.values()))
+        all_columns = list(chain(*list(distinct_col_vals.values())))
         # Filter selected columns
         dummy_df = pd.get_dummies(data, prefix_sep=prefix_sep)[all_columns]
 
