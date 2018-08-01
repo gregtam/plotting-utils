@@ -11,7 +11,7 @@ import pandas as pd
 
 
 
-def _clean_col_name(col_name):
+def clean_col_name(col_name):
     """Replaces specific characters in a string with an underscore. This
     may be necessary when creating tables in-database as these
     characters might not be allowed in column names.
@@ -209,7 +209,7 @@ def get_common_dummies(data, top_n=10, prefix_sep='_', clean_col=True):
         dummy_df = pd.get_dummies(data, prefix_sep=prefix_sep)[all_columns]
 
     if clean_col:
-        dummy_df.columns = dummy_df.columns.map(_clean_col_name)
+        dummy_df.columns = dummy_df.columns.map(clean_col_name)
 
     return dummy_df
 
@@ -280,6 +280,6 @@ def get_list_type_dummies(data, prefix_sep='_', clean_col=True,
             .map(lambda s: data.name + prefix_sep + s)
     if clean_col:
         dummy_df.columns = dummy_df.columns\
-            .map(lambda s: _clean_col_name(s))
+            .map(lambda s: clean_col_name(s))
 
     return dummy_df
