@@ -51,7 +51,7 @@ def _get_create_col_list(data, partitioned_by):
     """
 
     if isinstance(partitioned_by, str):
-        partition_by = [partitioned_by]
+        partitioned_by = [partitioned_by]
 
     if isinstance(data, (Alias, Table)):
         create_col_list = [_get_single_partitioned_str(data, col.name)
@@ -881,4 +881,5 @@ def save_table(selected_table, table_name, engine, schema=None,
         .from_select(selected_table.c,
                      select=selected_table
                     )
+
     psql.execute(insert_sql, engine)
