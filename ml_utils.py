@@ -51,21 +51,21 @@ def create_balanced_train_test_splits(df, class_col, train_class_size,
         A list of tuples of training and test sets
     """
 
-    def _create_balanced_train_df(df, class_col, train_class_size):
+    def _create_balanced_train_df():
         """Creates a balanced training set."""
         class_df_list =\
-            [_subset_single_class(df, class_col, value, train_class_size)
+            [_subset_single_class(value)
                  for value in class_values]
 
         train_df = pd.concat(class_df_list)
         return train_df
 
-    def _subset_single_class(df, class_col, value, train_class_size):
+    def _subset_single_class(value):
         """Subsets a single class for training."""
         return df[df[class_col] == value]\
             .sample(train_class_size)
 
-    def _create_complementary_test_df(df, train_df):
+    def _create_complementary_test_df(train_df):
         """Creates a test set that contains the remaining data in df
         that is not in the training set.
         """
@@ -79,13 +79,14 @@ def create_balanced_train_test_splits(df, class_col, train_class_size,
 
         return test_df
 
+
     # Get the distinct class values
     class_values = sorted(df[class_col].unique())
 
     train_test_set_list = []
     for i in range(n_iter):
-        train_df = _create_balanced_train_df(df, class_col, train_class_size)
-        test_df = _create_complementary_test_df(df, train_df)
+        train_df = _create_balanced_train_df()
+        test_df = _create_complementary_test_df(train_df)
 
         train_test_set_list.append((train_df, test_df))
 
@@ -110,7 +111,7 @@ def extract_dt_rule_string(obs, tree, feature_names):
         A string representing the Decision Tree rules.
     """
 
-    def _extract_split_rule(tree, node, dir, feature_names):
+    def _extract_split_rule(node, direction):
         """Gets the splitting rule for a decision tree at a given node."""
         feat_num = tree.feature[node]
         feat_name = feature_names[feat_num]
@@ -119,12 +120,12 @@ def extract_dt_rule_string(obs, tree, feature_names):
         if feat_num < 0:
             return ''
 
-        if dir == 'left':
+        if direction == 'left':
             return '{} <= {}'.format(feat_name, threshold)
-        elif dir == 'right':
+        elif direction == 'right':
             return '{} > {}'.format(feat_name, threshold)
 
-    def _recurse_tree(obs, tree, node, left_rules, right_rules, rule_list=[]):
+    def _recurse_tree(node, left_rules, right_rules, rule_list=[]):
         """Recurses down the tree and extracts the rules."""
         if tree.children_left[node] < 0 and tree.children_right[node] < 0:
             return ' AND '.join(rule_list)
@@ -132,19 +133,21 @@ def extract_dt_rule_string(obs, tree, feature_names):
         feat_num = tree.feature[node]
         if obs[feat_num] <= tree.threshold[node]:
             rule_list.append(left_rules[node])
-            return _recurse_tree(obs, tree, tree.children_left[node],
+            return _recurse_tree(tree.children_left[node],
                                  left_rules, right_rules, rule_list)
         else:
             rule_list.append(right_rules[node])
-            return _recurse_tree(obs, tree, tree.children_right[node],
+            return _recurse_tree(tree.children_right[node],
                                  left_rules, right_rules, rule_list)
 
-    left_rules = [_extract_split_rule(tree, i, 'left', feature_names)
+
+    left_rules = [_extract_split_rule(i, 'left')
                       for i in range(len(tree.feature))]
-    right_rules = [_extract_split_rule(tree, i, 'right', feature_names)
+    right_rules = [_extract_split_rule(i, 'right')
                        for i in range(len(tree.feature))]
 
-    dt_rule_str = _recurse_tree(obs, tree, 0, left_rules, right_rules)
+    dt_rule_str = _recurse_tree(0, left_rules, right_rules)
+
     return dt_rule_str
 
 
@@ -245,7 +248,7 @@ def get_list_type_dummies(data, prefix_sep='_', clean_col=True,
         A DataFrame with the new dummy columns
     """
 
-    def _get_distinct_values(data):
+    def _get_distinct_values():
         """Gets a list of all distinct values."""
         # Get reason code column (dropping nulls)
         srs = data.dropna()
@@ -256,7 +259,7 @@ def get_list_type_dummies(data, prefix_sep='_', clean_col=True,
         # Sort in alphabetical order
         return sorted(distinct_vals)
 
-    def _check_in_array(val, col_array):
+    def _check_in_array(col_array):
         """Check if the value is in array."""
         if col_array is None:
             return 0
@@ -267,13 +270,13 @@ def get_list_type_dummies(data, prefix_sep='_', clean_col=True,
         raise ValueError('data must be a Pandas Series.')
 
     # Get the series' distinct values
-    distinct_vals = _get_distinct_values(data)
+    distinct_vals = _get_distinct_values()
 
     dummy_df = pd.DataFrame()
 
     # Create dummy variables for reason codes
     for val in distinct_vals:
-        dummy_df[val] = data.map(lambda arr: _check_in_array(val, arr))
+        dummy_df[val] = data.map(_check_in_array)
 
     if include_prefix:
         dummy_df.columns = dummy_df.columns\
