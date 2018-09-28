@@ -32,7 +32,7 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
     """
     # TODO: Fix default colouring
 
-    def _check_for_input_errors(group_col, colours, file_path):
+    def _check_for_input_errors():
         """Check parameters for errors."""
         array_like_types = (list, tuple, np.ndarray)
         if colours is not None:
@@ -44,23 +44,22 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
                                  'power of however many values of group_col '
                                  'there are.')
 
-        if file_path and not _is_valid_colour_format(colours):
-            raise ValueError('If saving to a file, then colour names must be '
-                             'in the format #rgb or #rrggbb.')
+        for colour in colours:
+            _check_valid_colour_format(colour)
 
-    def _is_valid_colour_format(colour):
+    def _check_valid_colour_format(colour):
         """Checks whether the colour is the proper format. It should
         be in the form 'background-color: #rrggbb', '#rrggbb', or a
         3-tuple with red, green, and blue values in [0, 1].
         """
 
-        pattern = '^(background-color: )?#[0-9a-fA-F]{6}'
+        pattern = '^(background-color: )?#[0-9a-fA-F]{6}$'
         if isinstance(colour, str) and not bool(re.match(pattern, colour)):
             raise ValueError("colour should be of the form '#FFFFFF' or "
                              "'background-color: #FFFFFF.'")
 
-        if isinstance(colour, tuple):
-            for val in tuple:
+        elif isinstance(colour, tuple):
+            for val in colour:
                 if val < 0 or val > 1:
                     raise ValueError('colour tuple values should be between '
                                      '0 and 1.')
@@ -112,9 +111,8 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
 
         return np.array(colours).reshape(*new_shape)
 
-    def _get_group_colours(df, group_col, colours):
+    def _get_group_colours(df):
         """Returns a DataFrame detailing the colours of each row."""
-
         def _retrieve_colour(indices):
             """Retrieves the colour based off the indices."""
             if len(indices) == 1:
@@ -123,7 +121,7 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
                 return colours[tuple(indices)]
 
         # Maps the unique values of group_col to colour groups
-        index_df = _create_index_df(df, group_col)
+        index_df = _create_index_df()
 
         # Get the cell colour from the index
         colour_group_srs = index_df.apply(_retrieve_colour, axis=1)
@@ -136,7 +134,7 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
             style_df[col] = colour_group_srs
         return style_df
 
-    def _create_index_df(df, group_col):
+    def _create_index_df():
         """Create a DataFrame containing the indexes for colouring."""
         # Create empty DataFrame
         index_df = pd.DataFrame()
@@ -156,23 +154,13 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
         index_dict = dict((v, i % 2) for i, v in enumerate(srs.unique()))
         return srs.map(index_dict)
 
-    def _value_to_colour_group_map(df, colours):
-        """Maps the value of a column to its corresponding colour group."""
-        # Unique values of the column we wish to group sorted in order
-        # of appearance
-        unique_vals = df.drop_duplicates()
-
-        # A mapping between the value and its colour group. Groups will
-        # alternate between 0 and 1 for various values.
-        return dict([(val, colours[i%2]) for i, val in enumerate(unique_vals)])
-
 
     # Convert to numpy array if not already
     group_col = _listify(group_col)
     if colours is not None:
         colours = _listify(colours)
 
-    _check_for_input_errors(group_col, colours, file_path)
+    _check_for_input_errors()
 
     # Set default colours
     if colours is None:
@@ -184,9 +172,7 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
         colours = _reshape_colours(colours)
 
     # Returns the styled DataFrame
-    styled_df = df.style\
-        .apply(lambda df: _get_group_colours(df, group_col, colours),
-               axis=None)
+    styled_df = df.style.apply(_get_group_colours, axis=None)
 
     if file_path is not None:
         styled_df.to_excel(file_path, index=False, engine='openpyxl')
@@ -213,7 +199,7 @@ def date_file_path(file_path, directory='', date_format='%m%d'):
     dated_file_path : str
     """
 
-    def _check_for_input_errors(file_path, directory):
+    def _check_for_input_errors():
         """Check parameters for errors."""
         if not isinstance(file_path, str):
             raise ValueError('file_path must be a string.')
@@ -225,16 +211,16 @@ def date_file_path(file_path, directory='', date_format='%m%d'):
 
     def _prepend_date(file_name):
         """Prepends the date to the file name."""
-        date_prefix = _get_date_prefix(date_format)
+        date_prefix = _get_date_prefix()
         return '{}_{}'.format(date_prefix, file_name)
 
-    def _get_date_prefix(date_format):
+    def _get_date_prefix():
         """Gets the date prefix string from today's date."""
         today_date_str = datetime.strftime(date.today(), date_format)
         return today_date_str
 
 
-    _check_for_input_errors(file_path, directory)
+    _check_for_input_errors()
 
     if '/' not in file_path and directory == '':
         dated_file_path = _prepend_date(file_path)
@@ -250,7 +236,7 @@ def date_file_path(file_path, directory='', date_format='%m%d'):
     else:
         dated_file_name = _prepend_date(file_path)
         # Prepend directory to dated_file_name
-        dated_file_path = '{}/{}'.format(directory, dated_file_name)
+        dated_file_path = f'{directory}/{dated_file_name}'
 
     return dated_file_path
 
@@ -271,23 +257,22 @@ def save_large_df_to_excel(df, file_path, sheet_prefix='page'):
         The prefix of the sheet names
     """
 
-    def _split_file_path(file_path):
+    def _split_file_path():
         """Returns a list representing the file path containing the file."""
         if '/' in file_path:
             # Split file path into a list
-            split_path = file_path.split('/')
+            path_parts = file_path.split('/')
             # Take all except last entry and append together
-            directories = split_path
-            file_dir = '/'.join(directories[:-1])
-            file_name = directories[-1]
+            file_dir = '/'.join(path_parts[:-1])
+            file_name = path_parts[-1]
 
             return file_dir, file_name
         else:
             # Otherwise, return current directory as '.'
-            return '.', file_name
+            return '.', file_path
 
 
-    file_dir, file_name = _split_file_path(file_path)
+    file_dir, file_name = _split_file_path()
     # Prevents overwriting if file already exists
     if file_name in os.listdir(file_dir):
         raise ValueError('Filename {} already exists'.format(file_name))
