@@ -210,6 +210,7 @@ def date_file_path(file_path, directory='', date_format='%m%d'):
 
     Returns
     -------
+    dated_file_path : str
     """
 
     def _check_for_input_errors(file_path, directory):
