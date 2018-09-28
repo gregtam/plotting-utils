@@ -181,8 +181,8 @@ def balance_classes(data, class_col, class_sizes=1000, class_values=None):
         raise ValueError('If class_sizes is a dict, then class_values must be '
                          'None.')
 
-    # If class_values is a dict, then we can infer classes. Only retrieve
-    # the class values from the database if we can't infer.
+    # If class_values is a dict, then we can infer classes. Only
+    # retrieve the class values from the database if we can't infer.
     if class_values is None and not isinstance(class_sizes, dict):
         class_values = _get_class_values(data, class_col)
 
@@ -801,7 +801,8 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
 
 
 def save_table(selected_table, table_name, engine, schema=None,
-               partitioned_by=[], drop_table=False, print_query=False):
+               partitioned_by=[], drop_table=False, print_query=False,
+               stage=None):
     """Saves a SQLAlchemy selectable object to database.
 
     Parameters
@@ -819,6 +820,13 @@ def save_table(selected_table, table_name, engine, schema=None,
         If True, drop the table if it exists before creating new table
     print_query : str, default False
         If True, print the resulting query
+    stage : str, default None
+        Determines which stage of the creation process should be done.
+        It should be one of 'drop', 'create', or 'insert'. This is
+        implemented since sometimes there can be a glitch in Impala
+        where there is a delay between dropping and creating a table.
+        So, running them all consecutively in a function may not work.
+        This parameter allows to specify which stage is being done.
     """
 
     def _create_empty_table(selected_table, table_name, engine, schema,
@@ -862,24 +870,27 @@ def save_table(selected_table, table_name, engine, schema=None,
         # Create the table with no rows
         psql.execute(create_table_str, engine)
 
-    if drop_table:
+    if drop_table and (stage == 'drop' or stage is None):
         # TODO: There is a delay when dropping and creating a table
         # immediately after. Look into using cur instead of engine to
         # potentially solve it.
         _drop_table(table_name, schema, engine, print_query)
 
     # Create an empty table with the desired columns
-    _create_empty_table(selected_table, table_name, engine, schema,
-                        partitioned_by, print_query)
+    if stage == 'create' or stage is None:
+        _create_empty_table(selected_table, table_name, engine, schema,
+                            partitioned_by, print_query)
 
-    metadata = MetaData(engine)
-    created_table = Table(table_name, metadata, autoload=True, schema=schema)
+    if stage == 'insert' or stage is None:
+        metadata = MetaData(engine)
+        created_table = Table(table_name, metadata,
+                              autoload=True, schema=schema)
 
-    # Insert rows from selected table into the new table
-    insert_sql = created_table\
-        .insert()\
-        .from_select(selected_table.c,
-                     select=selected_table
-                    )
+        # Insert rows from selected table into the new table
+        insert_sql = created_table\
+            .insert()\
+            .from_select(selected_table.c,
+                         select=selected_table
+                        )
 
-    psql.execute(insert_sql, engine)
+        psql.execute(insert_sql, engine)
