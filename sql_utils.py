@@ -82,9 +82,9 @@ def _get_partition_col_list(data, partitioned_by):
     return partition_col_list
 
 
-def _get_single_partitioned_str(selected_table, col_str):
+def _get_single_partitioned_str(data, col_str):
     """Returns a string of the column name and type for partitioning."""
-    col = selected_table.c[col_str]
+    col = data.c[col_str]
     return '{} {}'.format(col.name, col.type.__visit_name__)
 
 
@@ -135,7 +135,7 @@ def balance_classes(data, class_col, class_sizes=1000, class_values=None):
         be a dict, then that will already determine the classes.
     """
 
-    def _get_class_values(data, class_col):
+    def _get_class_values():
         """Gets the distinct class values from the database."""
         class_values_tpl_list =\
             select([distinct(column(class_col))],
@@ -149,20 +149,20 @@ def balance_classes(data, class_col, class_sizes=1000, class_values=None):
 
         return class_values
 
-    def _subset_all_classes(data, class_col, class_sizes, class_values):
+    def _subset_all_classes():
         """Returns a list of subsetted Aliases for each class."""
         if isinstance(class_sizes, int):
             single_class_subset_aliases =\
-                [_subset_single_class(data, class_col, class_sizes, class_val)
+                [_subset_single_class(class_val)
                      for class_val in class_values]
         elif isinstance(class_sizes, dict):
             single_class_subset_aliases =\
-                [_subset_single_class(data, class_col, class_size, class_val)
+                [_subset_single_class(class_val)
                      for class_val, class_size in class_sizes.items()]
 
         return single_class_subset_aliases
 
-    def _subset_single_class(data, class_col, class_sizes, class_val):
+    def _subset_single_class(class_val):
         """Subsets the data by a single class."""
         class_subset_alias =\
             select(data.c)\
@@ -184,10 +184,9 @@ def balance_classes(data, class_col, class_sizes=1000, class_values=None):
     # If class_values is a dict, then we can infer classes. Only
     # retrieve the class values from the database if we can't infer.
     if class_values is None and not isinstance(class_sizes, dict):
-        class_values = _get_class_values(data, class_col)
+        class_values = _get_class_values()
 
-    single_class_subset_aliases =\
-        _subset_all_classes(data, class_col, class_sizes, class_values)
+    single_class_subset_aliases = _subset_all_classes()
 
     balanced_class_union_alias =\
         union_all(*single_class_subset_aliases)\
@@ -208,9 +207,7 @@ def clear_schema(schema_name, con, print_query=False):
         If True, print the resulting query
     """
 
-    sql = '''
-    SHOW TABLES IN {schema_name};
-    '''.format(**locals())
+    sql = f'SHOW TABLES IN {schema_name};'
 
     if print_query:
         print(dedent(sql))
@@ -243,7 +240,7 @@ def convert_table_to_df(data):
          A DataFrame representation of the data.
     """
 
-    def _get_slct_object(data):
+    def _get_slct_object():
         """Returns a Selectable object."""
         if isinstance(data, (Alias, Table)):
             # Alias and Table cannot be executed, so we must select it
@@ -254,18 +251,18 @@ def convert_table_to_df(data):
             # ordering that mmight be specified
             return data
 
-    def _get_column_names(data):
+    def _get_column_names():
         """Returns a list of the table's column names."""
         return [s.name for s in data.c]
 
 
     # Set the select object
-    slct = _get_slct_object(data)
+    slct = _get_slct_object()
 
     # Fetch all rows (as a list of tuples, where each tuple value
     # represents the columns)
     tpl_list = slct.execute().fetchall()
-    col_names = _get_column_names(data)
+    col_names = _get_column_names()
     df = pd.DataFrame(tpl_list, columns=col_names)
 
     return df
@@ -288,7 +285,7 @@ def count_distinct_values(tbl, engine=None, approx=False):
     count_distinct_df : DataFrame
     """
 
-    def _check_for_input_errors(tbl, engine):
+    def _check_for_input_errors():
         """Check parameters for errors."""
         if not isinstance(tbl, (str, Alias, Table)):
             raise TypeError('tbl must be of str or Alias/Table type.')
@@ -299,7 +296,7 @@ def count_distinct_values(tbl, engine=None, approx=False):
         elif isinstance(tbl, (Alias, Table)) and engine is not None:
             warn('The engine field is not needed if tbl is an Alias or Table.')
 
-    _check_for_input_errors(tbl, engine)
+    _check_for_input_errors()
 
     # Choose associated table if tbl is a string
     if isinstance(tbl, str):
@@ -342,6 +339,10 @@ def count_distincts_by_group(data, group_by_cols, count_distinct_cols):
         The column(s) which we want to group by
     count_distinct_cols : str or list of str
         The column(s) which we want to do count the distincts on
+
+    Returns
+    -------
+    grouped_count_distinct_alias : SQLAlchemy Alias
     """
 
     def _convert_to_col_list(cols):
@@ -351,7 +352,7 @@ def count_distincts_by_group(data, group_by_cols, count_distinct_cols):
         elif isinstance(cols, list):
             return [column(s) for s in cols]
 
-    def _compute_single_distinct(data, group_by_col_list, count_col):
+    def _compute_single_distinct(count_col):
         """Counts distincts for a single columns."""
         group_by_slct =\
             select(group_by_col_list
@@ -409,7 +410,7 @@ def count_distincts_by_group(data, group_by_cols, count_distinct_cols):
 
     # Grouped by Aliases
     grouped_slct_list =\
-        [_compute_single_distinct(data, group_by_col_list, count_col)
+        [_compute_single_distinct(count_col)
              for count_col in count_distinct_col_list]
     # Assign different Alias names to each
     grouped_alias_list = [data.alias('foo_{}'.format(i))
@@ -421,12 +422,12 @@ def count_distincts_by_group(data, group_by_cols, count_distinct_cols):
     return grouped_count_distinct_alias
 
 
-def count_rows(from_obj, print_commas=False):
+def count_rows(data, print_commas=False):
     """Counts the number of rows from a SQLAlchemy Alias or Table.
 
     Parameters
     ----------
-    from_obj : A SQLAlchemy Table or Alias object
+    data : SQLAlchemy Alias/Table
     print_commas : bool, default False
         Whether or not to print commas for the thousands separator
 
@@ -437,12 +438,14 @@ def count_rows(from_obj, print_commas=False):
 
     row_count =\
         select([func.count('*')],
-               from_obj=from_obj
+               from_obj=data
               )\
         .execute()\
         .scalar()
+
     if print_commas:
         print('{:,}'.format(row_count))
+
     return row_count
 
 
@@ -452,10 +455,10 @@ def get_column_names(full_table_name, con, order_by='ordinal_position',
 
     Parameters
     ----------
-    con : SQLAlchemy engine object or psycopg2 connection object
     full_table_name : str
         Name of the table in SQL. Input can also include have the schema
         name prepended, with a '.', e.g., 'schema_name.table_name'.
+    con : SQLAlchemy engine object or psycopg2 connection object
     order_by : str, default 'ordinal_position'
         Specified way to order columns. Can be either 'ordinal_position'
         or 'alphabetically'.
@@ -621,8 +624,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
         If True, print the resulting query
     """
 
-    def _create_empty_table(df, full_table_name, engine, partitioned_by,
-                            print_query):
+    def _create_empty_table(full_table_name):
         """Creates an empty table based on a DataFrame."""
         # Set create table string
         create_str = 'CREATE TABLE {}'.format(full_table_name)
@@ -679,15 +681,18 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
         else:
             return "'{}'".format(x)
 
-    def _get_partition_vals(df, parititoned_by):
+    def _get_partition_vals():
         """Gets the values used for partitioning."""
+        # Filter so only distinct values of partition column(s) remain
         distinct_df = df[partitioned_by].drop_duplicates()
 
+        # List of dictionaries that map the column names to their values
         partition_vals = [row.fillna('NULL').to_dict()
-                              for i, row in distinct_df.iterrows()]
+                              for _, row in distinct_df.iterrows()]
+
         return partition_vals
 
-    def _filter_on_partition(df, partition_dict):
+    def _filter_df_on_partition():
         """Filters a DataFrame on a partition dictionary."""
         sub_df = df.copy()
         for k, v in partition_dict.items():
@@ -697,35 +702,35 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
                 sub_df = sub_df[sub_df[k] == v]
         return sub_df
 
-    def _add_rows_to_table(sub_df, full_table_name, partition_col_list,
-                           create_col_list, print_query,
-                           partition_dict=None):
+    def _add_rows_to_table(sub_df, partition_dict=None):
         """Adds a subset of rows to a SQL table from a DataFrame. The
         purpose of this is to do it in batches for quicker insert time.
         """
 
         # FIXME: Incorporate inserting rows with partitions in batches
-        insert_str = 'INSERT INTO {}\n'.format(full_table_name)
+        insert_str = f'INSERT INTO {full_table_name}\n'
 
         # VALUES Clause
-        values_list = [_row_to_insert(sub_df.iloc[i], partition_dict)
+        # Each entry represents a row of the DataFrame that is being
+        # inserted into the table
+        values_list = [_create_row_insert_sql(sub_df.iloc[i], partition_dict)
                            for i in range(len(sub_df))]
         values_str = 'VALUES\n{}'.format(',\n'.join(values_list))
 
-        # PARTITION Clause
+        # Add PARTITION Clause if specified
         if partition_dict is not None:
             partition_vals_str = _get_partition_vals_str(partition_dict)
-            partition_str = 'PARTITION {}\n'.format(partition_vals_str)
-            insert_values_str = '{insert_str}{partition_str}{values_str};'\
-                .format(**locals())
+            partition_str = f'PARTITION {partition_vals_str}\n'
+            insert_values_str = f'{insert_str}{partition_str}{values_str};'
         else:
-            insert_values_str = '{insert_str}{values_str};'.format(**locals())
+            insert_values_str = f'{insert_str}{values_str};'
 
         if print_query:
             print(insert_values_str)
+
         psql.execute(insert_values_str, engine)
 
-    def _row_to_insert(row_srs, partition_val=None):
+    def _create_row_insert_sql(row_srs, partition_dict=None):
         """Converts a DataFrame row to a string to be used in an INSERT
         SQL query.
         """
@@ -734,19 +739,24 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
         # remaining columns to string
         str_row_srs = row_srs.fillna('NULL').astype(str)
 
-        # Don't put partition columns into VALUES portion of query.
-        if partition_val is not None:
-            str_row_srs = str_row_srs.drop(list(partition_val.keys()))
+        # Remove partition columns since they should not be in the
+        # VALUES part of the query
+        if partition_dict is not None:
+            str_row_srs = str_row_srs.drop(list(partition_dict.keys()))
 
         insert_sql = ', '.join(str_row_srs)
         insert_sql = '({})'.format(insert_sql)
+
         return insert_sql
 
     def _get_partition_vals_str(partition_dict):
         """Returns the partition string from the partition dict."""
-        partition_vals_str_list = ['{}={}'.format(k, v)
-                                       for k, v in partition_dict.items()]
-        partition_vals_str = '({})'.format(', '.join(partition_vals_str_list))
+        partition_vals_str_list =\
+            [f'{k}={v}' for k, v in partition_dict.items()]
+
+        partition_vals_str =\
+            '({})'.format(', '.join(partition_vals_str_list))
+
         return partition_vals_str
 
 
@@ -762,12 +772,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
     else:
         full_table_name = '{}.{}'.format(schema, table_name)
 
-    create_col_list, partition_col_list = _create_empty_table(df,
-                                                              full_table_name,
-                                                              engine,
-                                                              partitioned_by,
-                                                              print_query
-                                                             )
+    create_col_list, partition_col_list = _create_empty_table(full_table_name)
     df = _add_quotes_to_data(df)
 
     if isinstance(partitioned_by, str):
@@ -775,17 +780,15 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
 
     if len(partitioned_by) > 0:
         # List of dicts representing the partitions
-        partition_vals = _get_partition_vals(df, partitioned_by)
+        partition_vals = _get_partition_vals()
         for partition_dict in partition_vals:
-            sub_df = _filter_on_partition(df, partition_dict)
-            _add_rows_to_table(sub_df, full_table_name, partition_col_list,
-                               create_col_list, print_query, partition_dict)
+            sub_df = _filter_df_on_partition()
+            _add_rows_to_table(sub_df, partition_dict)
 
     else:
         if batch_size == 0:
             # Add all rows at once
-            _add_rows_to_table(df, full_table_name, partition_col_list,
-                               create_col_list, print_query)
+            _add_rows_to_table(df)
         else:
             nrows = df.shape[0]
             # Gets indices that define the start points of each batch
@@ -796,18 +799,17 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
                 start_index = batch_indices[i]
                 stop_index = batch_indices[i+1]
                 sub_df = df.iloc[start_index:stop_index]
-                _add_rows_to_table(sub_df, full_table_name, partition_col_list,
-                                   create_col_list, print_query)
+                _add_rows_to_table(sub_df)
 
 
-def save_table(selected_table, table_name, engine, schema=None,
+def save_table(data, table_name, engine, schema=None,
                partitioned_by=[], drop_table=False, print_query=False,
                stage=None):
     """Saves a SQLAlchemy selectable object to database.
 
     Parameters
     ----------
-    selected_table : SQLAlchemy selectable object
+    data : SQLAlchemy Alias
         A table we wish to save
     table_name : str
         What we want to name the table
@@ -829,8 +831,7 @@ def save_table(selected_table, table_name, engine, schema=None,
         This parameter allows to specify which stage is being done.
     """
 
-    def _create_empty_table(selected_table, table_name, engine, schema,
-                            partitioned_by, print_query):
+    def _create_empty_table():
         """Creates an empty table based on a SQLAlchemy selected table."""
         # Set full table name
         if schema is None:
@@ -843,8 +844,8 @@ def save_table(selected_table, table_name, engine, schema=None,
 
         # Specify column names and data types. Double quotes allow for
         # column names with different punctuation (e.g., spaces).
-        create_col_list = _get_create_col_list(selected_table, partitioned_by)
-        partition_col_list = _get_partition_col_list(selected_table, partitioned_by)
+        create_col_list = _get_create_col_list(data, partitioned_by)
+        partition_col_list = _get_partition_col_list(data, partitioned_by)
 
         sep_str = ',\n    '
         create_col_str = sep_str.join(create_col_list)
@@ -878,8 +879,7 @@ def save_table(selected_table, table_name, engine, schema=None,
 
     # Create an empty table with the desired columns
     if stage == 'create' or stage is None:
-        _create_empty_table(selected_table, table_name, engine, schema,
-                            partitioned_by, print_query)
+        _create_empty_table()
 
     if stage == 'insert' or stage is None:
         metadata = MetaData(engine)
@@ -889,8 +889,8 @@ def save_table(selected_table, table_name, engine, schema=None,
         # Insert rows from selected table into the new table
         insert_sql = created_table\
             .insert()\
-            .from_select(selected_table.c,
-                         select=selected_table
+            .from_select(data.c,
+                         select=data
                         )
 
         psql.execute(insert_sql, engine)
