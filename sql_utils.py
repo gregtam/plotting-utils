@@ -268,15 +268,13 @@ def convert_table_to_df(data):
     return df
 
 
-def count_distinct_values(tbl, engine=None, approx=False):
+def count_distinct_values(data, approx=False):
     """Counts the number of distinct values for each column of a table.
 
     Parameters
     ----------
-    tbl : str or SQLAlchemy Table/Alias
+    data : SQLAlchemy Table/Alias
         The object representing the table or the table name
-    engine : SQLAlchemy engine object, default None
-        The engine only needs to be specified if tbl is a string
     approx : bool, default False
         Whether to approximate (uses ndv() function)
 
@@ -287,40 +285,37 @@ def count_distinct_values(tbl, engine=None, approx=False):
 
     def _check_for_input_errors():
         """Check parameters for errors."""
-        if not isinstance(tbl, (str, Alias, Table)):
-            raise TypeError('tbl must be of str or Alias/Table type.')
+        if not isinstance(data, (Alias, Table)):
+            raise TypeError('data must be of Alias or Table type.')
 
-        if isinstance(tbl, str) and engine is None:
-            raise ValueError('If tbl is a string, then engine must be '
-                             'specified.')
-        elif isinstance(tbl, (Alias, Table)) and engine is not None:
-            warn('The engine field is not needed if tbl is an Alias or Table.')
+    def _fetch_num_distinct_values(col):
+        """Fetches the number of distinct values for a given column."""
+        if approx:
+            distinct_count_col = func.ndv(col)
+        else:
+            distinct_count_col = func.count(col.distinct())
+
+        distinct_count =\
+            select([distinct_count_col],
+                   from_obj=data
+                  )\
+            .execute()\
+            .scalar()
+
+        return distinct_count
+
 
     _check_for_input_errors()
 
-    # Choose associated table if tbl is a string
-    if isinstance(tbl, str):
-        metadata = MetaData(engine)
-        tbl = Table(tbl, metadata, autoload=True)
-
     count_distinct_df = pd.DataFrame(columns=['column_name', 'n_distinct'])
-    for tbl_col in tbl.c:
-        if approx:
-            count =\
-                select([func.ndv(tbl_col)],
-                       from_obj=tbl
-                      )\
-                .execute()\
-                .scalar()
-        else:
-            count =\
-                select([func.count(distinct(tbl_col))],
-                       from_obj=tbl
-                      )\
-                .execute()\
-                .scalar()
+    for tbl_col in data.c:
+        # Fetch the number of distinct values for the column
+        distinct_count = _fetch_num_distinct_values(tbl_col)
 
-        new_row = (tbl_col.name, count)
+        # Create new row to add to DataFrame
+        new_row = (tbl_col.name, distinct_count)
+
+        # Add new row to DataFrame
         count_distinct_df.loc[count_distinct_df.shape[0]] = new_row
 
     return count_distinct_df
