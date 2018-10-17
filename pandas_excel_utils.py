@@ -1,3 +1,4 @@
+import colorsys
 from datetime import date, datetime
 from math import log
 import os
@@ -6,6 +7,34 @@ import re
 import numpy as np
 import pandas as pd
 
+
+
+def adjust_colour_lightness(colour, light):
+    """Lightens a colour by a certain percentage.
+
+    Parameters
+    ----------
+    colour : tuple, length 3
+        RGB (Red, Green, Blue) representation of a colour
+    light : float
+        The desired lightness of the colour
+
+    Returns
+    -------
+    adjusted_colour_rgb : tuple, length 3
+        The colour with lightness adjusted
+    """
+
+    # Colour represented in HLS (Hue, Lightness, Saturation)
+    colour_hls = list(colorsys.rgb_to_hls(*colour))
+
+    # Assign the lightness
+    colour_hls[1] = light
+
+    # Convert back to RGB (Red, Green, Blue)
+    adjusted_colour_rgb = colorsys.hls_to_rgb(*colour_hls)
+
+    return adjusted_colour_rgb
 
 
 def colour_df_by_group(df, group_col, colours=None, file_path=None):
