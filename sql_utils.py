@@ -153,21 +153,21 @@ def balance_classes(data, class_col, class_sizes=1000, class_values=None):
         """Returns a list of subsetted Aliases for each class."""
         if isinstance(class_sizes, int):
             single_class_subset_aliases =\
-                [_subset_single_class(class_val)
+                [_subset_single_class(class_val, class_sizes)
                      for class_val in class_values]
         elif isinstance(class_sizes, dict):
             single_class_subset_aliases =\
-                [_subset_single_class(class_val)
+                [_subset_single_class(class_val, class_size)
                      for class_val, class_size in class_sizes.items()]
 
         return single_class_subset_aliases
 
-    def _subset_single_class(class_val):
+    def _subset_single_class(class_val, class_size):
         """Subsets the data by a single class."""
         class_subset_alias =\
             select(data.c)\
             .where(column(class_col) == class_val)\
-            .limit(class_sizes)\
+            .limit(class_size)\
             .alias('class_subset')
 
         # Nests it in another select, since there is a glitch which
