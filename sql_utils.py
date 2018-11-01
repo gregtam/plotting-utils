@@ -889,3 +889,54 @@ def save_table(data, table_name, engine, schema=None,
                         )
 
         psql.execute(insert_sql, engine)
+
+
+def subset_join(main_data, subset_data, join_key):
+    """Subsets the rows of main_data according to subset_data. This is
+    achieved by joining the main_data to the subset_data on the join_key
+    and selecting the columns of main_data.
+
+    Parameters
+    ----------
+    main_data : SQLAlchemy Alias/Table
+        The main table which will be subsetted
+    subset_data : SQLAlchemy Alias/Table
+        The table which defines what values of main_data to subset
+    join_key : str or list of str
+        The join key(s) that define how to join main_data to subset_data
+
+    Returns
+    -------
+    main_subsetted_alias : SQLAlchemy Alias
+    """
+
+    def _create_on_clause():
+        """Creates the join on clause."""
+        if isinstance(join_key, str):
+            join_clause = (main_data.c[join_key] == subset_data.c[join_key])
+        elif isinstance(join_key, list):
+            join_clause_list = [main_data.c[k] == subset_data.c[k]
+                                    for k in join_key]
+            join_clause = and_(*join_clause_list)
+        else:
+            raise ValueError('join_key should be a string or list of strings.')
+
+        return join_clause
+
+
+    # Defines what the tables should be joined on
+    join_clause = _create_on_clause()
+
+    # Join main data to subset data
+    data_join = main_data\
+        .join(subset_data,
+              onclause=join_clause
+             )
+
+    main_subsetted_alias =\
+        select(main_data.c,
+               from_obj=data_join
+              )\
+        .alias('main_subsetted')
+
+    return main_subsetted_alias
