@@ -220,6 +220,61 @@ def clear_schema(schema_name, con, print_query=False):
         psql.execute(del_sql, con)
 
 
+def compute_percent_missing(full_table_name, con, print_query=False):
+    """This function takes a schema name and table name as an input and
+    creates a SQL query to compute the number of missing entries for
+    each column. It will also determine the total number of rows in the
+    table.
+
+    Parameters
+    ----------
+    full_table_name : str
+        Name of the table in SQL. Input can also include have the schema
+        name prepended, with a '.', e.g., 'schema_name.table_name'.
+    con : SQLAlchemy engine object or psycopg2 connection object
+    print_query : bool, default False
+        If True, print the resulting query
+
+    Returns
+    -------
+    pct_df : DataFrame
+    """
+
+    column_names = get_column_names(full_table_name, con).column_name
+    schema_name, table_name = _separate_schema_table(full_table_name, con)
+
+    num_missing_sql_list = ['SUM(({name} IS NULL)::INTEGER) AS {name}'\
+                                .format(name=name) for name in column_names]
+
+    num_missing_list_str = ',\n           '.join(num_missing_sql_list)
+
+    sql = '''
+    SELECT {num_missing_list_str},
+           COUNT(*) AS total_count
+      FROM {schema_name}.{table_name};
+    '''.format(**locals())
+
+    # Read in the data from the query and transpose it
+    pct_df = psql.read_sql(sql, con).T
+
+    # Rename the column to 'pct_null'
+    pct_df.columns = ['pct_null']
+
+    # Get the number of rows of table_name
+    total_count = pct_df.ix['total_count', 'pct_null']
+
+    # Remove the total_count from the DataFrame
+    pct_df = pct_df[:-1]/total_count
+    pct_df.reset_index(inplace=True)
+    pct_df.columns = ['column_name', 'pct_null']
+    pct_df['table_name'] = table_name
+
+    if print_query:
+        print(dedent(sql))
+
+    return pct_df
+
+
 def convert_table_to_df(data):
     """Converts a SQLAlchemy Alias, Select, or Table to a pandas
     DataFrame. This function will use fetchall(), then convert that
@@ -444,9 +499,9 @@ def count_rows(data, print_commas=False):
     return row_count
 
 
-def get_column_names(full_table_name, con, order_by='ordinal_position',
+def fetch_column_names(full_table_name, con, order_by='ordinal_position',
                      reverse=False, print_query=False):
-    """Gets all of the column names of a specific table.
+    """Fetches all of the column names of a specific table.
 
     Parameters
     ----------
@@ -495,8 +550,8 @@ def get_column_names(full_table_name, con, order_by='ordinal_position',
     return column_names_df
 
 
-def get_table_names(con, schema_name=None, print_query=False):
-    """Gets all the table names in the specified database.
+def fetch_table_names(con, schema_name=None, print_query=False):
+    """Fetches all the table names in the specified database.
 
     Parameters
     ----------
@@ -522,61 +577,6 @@ def get_table_names(con, schema_name=None, print_query=False):
 
     table_names_df = psql.read_sql(sql, con)
     return table_names_df
-
-
-def get_percent_missing(full_table_name, con, print_query=False):
-    """This function takes a schema name and table name as an input and
-    creates a SQL query to determine the number of missing entries for
-    each column. It will also determine the total number of rows in the
-    table.
-
-    Parameters
-    ----------
-    full_table_name : str
-        Name of the table in SQL. Input can also include have the schema
-        name prepended, with a '.', e.g., 'schema_name.table_name'.
-    con : SQLAlchemy engine object or psycopg2 connection object
-    print_query : bool, default False
-        If True, print the resulting query
-
-    Returns
-    -------
-    pct_df : DataFrame
-    """
-
-    column_names = get_column_names(full_table_name, con).column_name
-    schema_name, table_name = _separate_schema_table(full_table_name, con)
-
-    num_missing_sql_list = ['SUM(({name} IS NULL)::INTEGER) AS {name}'\
-                                .format(name=name) for name in column_names]
-
-    num_missing_list_str = ',\n           '.join(num_missing_sql_list)
-
-    sql = '''
-    SELECT {num_missing_list_str},
-           COUNT(*) AS total_count
-      FROM {schema_name}.{table_name};
-    '''.format(**locals())
-
-    # Read in the data from the query and transpose it
-    pct_df = psql.read_sql(sql, con).T
-
-    # Rename the column to 'pct_null'
-    pct_df.columns = ['pct_null']
-
-    # Get the number of rows of table_name
-    total_count = pct_df.ix['total_count', 'pct_null']
-
-    # Remove the total_count from the DataFrame
-    pct_df = pct_df[:-1]/total_count
-    pct_df.reset_index(inplace=True)
-    pct_df.columns = ['column_name', 'pct_null']
-    pct_df['table_name'] = table_name
-
-    if print_query:
-        print(dedent(sql))
-
-    return pct_df
 
 
 def print_actual_query(slct):
