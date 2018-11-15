@@ -1,5 +1,6 @@
 from functools import reduce
 from textwrap import dedent
+import time
 from warnings import warn
 
 from impala.sqlalchemy import BIGINT, BOOLEAN, DECIMAL, DOUBLE, FLOAT, INT,\
@@ -765,9 +766,10 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
     if schema is None:
         full_table_name = table_name
     else:
-        full_table_name = '{}.{}'.format(schema, table_name)
+        full_table_name = f'{schema}.{table_name}'
 
     create_col_list, partition_col_list = _create_empty_table(full_table_name)
+    #time.sleep(2)
     df = _add_quotes_to_data(df)
 
     if isinstance(partitioned_by, str):
@@ -889,6 +891,84 @@ def save_table(data, table_name, engine, schema=None,
                         )
 
         psql.execute(insert_sql, engine)
+
+
+def sql_join(left_data, right_data, join_key, how='inner'):
+    """Performs a simple SQLAlchemy join. This function is used to
+    reduce the overhead and burden of specifying join keys every time a
+    join needs to be done. This is only for joins where the column names
+    in both tables that are being matched up are the same.
+
+    Parameters
+    ----------
+    left_data : SQLAlchemy Alias/Table
+        The left side of the join
+    right_data : SQLAlchemy Alias/Table
+        The right side of the join
+    join_key : str or list of str/tuples
+        The join key(s). If it is a list, then it can be a combination
+        of strings (if present in both tables) or tuples of length 2
+        (if joining on two different column names).
+    how : str, default 'inner'
+        How to join (one of 'inner', 'left', 'full')
+
+    Returns
+    -------
+    data_join : SQLAlchemy Join
+    """
+
+    def _create_join_clause():
+        """Creates the join clause using the join keys."""
+        if isinstance(join_key, str):
+            join_clause = _create_indiv_join_clause(join_key)
+        elif isinstance(join_key, list):
+            # Individual join clauses
+            indiv_join_clauses = [_create_indiv_join_clause(key)
+                                      for key in join_key]
+            join_clause = and_(*indiv_join_clauses)
+
+        return join_clause
+
+    def _create_indiv_join_clause(key):
+        """Creates an individual comparison of two keys from the tables."""
+        if isinstance(key, str):
+            indiv_join_clause = (left_data.c[key] == right_data.c[key])
+        elif isinstance(key, (list, tuple)):
+            indiv_join_clause = (left_data.c[key[0]] == right_data.c[key[1]])
+
+        return indiv_join_clause
+
+    def _get_join_type():
+        """Returns parameters to specify join type."""
+        if how == 'inner':
+            isouter = False
+            full = False
+        elif how == 'left':
+            isouter = True
+            full = False
+        elif how == 'full':
+            isouter = True
+            full = True
+
+        return isouter, full
+
+
+    if how not in {'inner', 'left', 'full'}:
+        raise ValueError("how should be one of 'inner', 'left', or 'full'.")
+
+    # Parameters for join specification
+    isouter, full = _get_join_type()
+    join_clause = _create_join_clause()
+
+    # Join the tables
+    data_join = left_data\
+        .join(right_data,
+              onclause=join_clause,
+              isouter=isouter,
+              full=full
+             )
+
+    return data_join
 
 
 def subset_join(main_data, subset_data, join_key):
