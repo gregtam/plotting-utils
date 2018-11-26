@@ -12,7 +12,8 @@ from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor,\
                          ExtraTreeClassifier, ExtraTreeRegressor
 from statsmodels.stats.proportion import proportion_confint
 
-blue, green, red, purple, yellow, cyan = sns.color_palette('colorblind')
+blue, orange, green, red, purple, brown, pink, grey, yellow, sky_blue =\
+    sns.color_palette('colorblind')
 
 
 

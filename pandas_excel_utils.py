@@ -189,8 +189,6 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
     if colours is not None:
         colours = _listify(colours)
 
-    _check_for_input_errors()
-
     # Set default colours
     if colours is None:
         colours = ['background-color: #FFFFFF', 'background-color: #AAAAAA']
@@ -199,6 +197,8 @@ def colour_df_by_group(df, group_col, colours=None, file_path=None):
         colours = [_convert_colour_to_hex_css(colour) for colour in colours]
         # Reshape colours so it can be indexed by tuples
         colours = _reshape_colours(colours)
+
+    _check_for_input_errors()
 
     # Returns the styled DataFrame
     styled_df = df.style.apply(_get_group_colours, axis=None)
