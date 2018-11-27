@@ -8,7 +8,6 @@ from impala.sqlalchemy import BIGINT, BOOLEAN, DECIMAL, DOUBLE, FLOAT, INT,\
 import numpy as np
 import pandas as pd
 import pandas.io.sql as psql
-import psycopg2
 from sqlalchemy import Column, Table, MetaData
 from sqlalchemy import all_, and_, any_, not_, or_
 from sqlalchemy import alias, between, case, cast, column, distinct, extract,\
