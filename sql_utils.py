@@ -472,7 +472,7 @@ def count_distincts_by_group(data, group_by_cols, count_distinct_cols):
     return grouped_count_distinct_alias
 
 
-def count_rows(data, print_commas=False):
+def count_rows(data, print_commas=True):
     """Counts the number of rows from a SQLAlchemy Alias or Table.
 
     Parameters
@@ -907,7 +907,9 @@ def sql_join(left_data, right_data, join_key, how='inner'):
     join_key : str or list of str/tuples
         The join key(s). If it is a list, then it can be a combination
         of strings (if present in both tables) or tuples of length 2
-        (if joining on two different column names).
+        (if joining on two different column names). If it is the latter,
+        then the first entry should correspond to left_data and the
+        second entry should correspond to right_data.
     how : str, default 'inner'
         How to join (one of 'inner', 'left', 'full')
 
