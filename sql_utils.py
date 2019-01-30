@@ -116,7 +116,8 @@ def assign_column_types(data, col_type_dict):
         data.c[col_name].type = data_type
 
 
-def balance_classes(data, class_col, class_sizes=1000, class_values=None):
+def balance_classes(data, class_col, class_sizes=1000, class_values=None,
+                    seed=0):
     """Balance the classes of a data set so they are evenly distributed.
 
     Parameters
@@ -133,6 +134,8 @@ def balance_classes(data, class_col, class_sizes=1000, class_values=None):
         The values that the class_col can take. If None, then it will
         find it automatically. If not None, then class_sizes should not
         be a dict, then that will already determine the classes.
+    seed : int, default 0
+        The random seed
     """
 
     def _get_class_values():
@@ -167,6 +170,7 @@ def balance_classes(data, class_col, class_sizes=1000, class_values=None):
         class_subset_alias =\
             select(data.c)\
             .where(column(class_col) == class_val)\
+            .order_by(func.random(seed))\
             .limit(class_size)\
             .alias('class_subset')
 
