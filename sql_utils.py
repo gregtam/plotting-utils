@@ -61,6 +61,7 @@ def _get_create_col_list(data, partitioned_by):
         create_col_list = ['{} {}'.format(k, _from_df_type_to_sql_type(v))
                                for k, v in data.dtypes.items()
                                    if k not in partitioned_by]
+
     return create_col_list
 
 
@@ -116,8 +117,8 @@ def assign_column_types(data, col_type_dict):
         data.c[col_name].type = data_type
 
 
-def balance_classes(data, class_col, class_sizes=1000, class_values=None,
-                    seed=0):
+def balance_classes(data, class_col, class_sizes=None, sample_rates=None,
+                    class_values=None, seed=0):
     """Balance the classes of a data set so they are evenly distributed.
 
     Parameters
@@ -125,18 +126,48 @@ def balance_classes(data, class_col, class_sizes=1000, class_values=None,
     data : SQLAlchemy Alias/Table
     class_col : str
         The column name that we want to have even distribution of
-    class_sizes : int or dict, default 1000
+    class_sizes : int or dict, default None
         The desired number of rows of each class in our final data set.
             - If int, then all classes will be the same size
             - If dict, then it should map the class value to its size.
               Therefore, class_values should not be specified.
+        This is achieved by sorting the values in each class randomly,
+        then the first set of rows using the LIMIT clause. This option
+        will guarantee the size of the classes, but can be slow for very
+        large data sets due to the sorting.
+
+        If specified, then sample_rates must be None. Otherwise, if both
+        values are None, then the class_sizes will be automatically set
+        to 1000.
+    sample_rates : dict, default None
+        A dict that maps the class values to their desired sampling
+        rates. The sampling rate filters rows where a random value is
+        less than or equal to the sampling rate. For very large data
+        sets, use this option as it will be much quicker than assigning
+        class_sizes.
+
+        If specified, then class_sizes must be set to None.
     class_values : list, default None
         The values that the class_col can take. If None, then it will
         find it automatically. If not None, then class_sizes should not
         be a dict, then that will already determine the classes.
     seed : int, default 0
         The random seed
+
+    Returns
+    -------
+    balanced_class_union_alias : SQLAlchemy Alias
     """
+
+    def _check_for_input_errors():
+        """Check parameters for errors."""
+        if isinstance(class_sizes, dict) and class_values is not None:
+            raise ValueError('If class_sizes is a dict, then class_values '
+                             'must be None.')
+
+        if class_sizes is not None and sample_rates is not None:
+            raise ValueError('Both class_sizes and sample_rates cannot be '
+                             'specified.')
 
     def _get_class_values():
         """Gets the distinct class values from the database."""
@@ -156,23 +187,37 @@ def balance_classes(data, class_col, class_sizes=1000, class_values=None,
         """Returns a list of subsetted Aliases for each class."""
         if isinstance(class_sizes, int):
             single_class_subset_aliases =\
-                [_subset_single_class(class_val, class_sizes)
+                [_subset_single_class(class_val, class_size=class_sizes)
                      for class_val in class_values]
+
         elif isinstance(class_sizes, dict):
             single_class_subset_aliases =\
-                [_subset_single_class(class_val, class_size)
+                [_subset_single_class(class_val, class_size=class_size)
                      for class_val, class_size in class_sizes.items()]
+
+        elif isinstance(sample_rates, dict):
+            single_class_subset_aliases =\
+                [_subset_single_class(class_val, sample_rate=sample_rate)
+                     for class_val, sample_rate in sample_rates.items()]
 
         return single_class_subset_aliases
 
-    def _subset_single_class(class_val, class_size):
+    def _subset_single_class(class_val, class_size=None, sample_rate=None):
         """Subsets the data by a single class."""
-        class_subset_alias =\
-            select(data.c)\
-            .where(column(class_col) == class_val)\
-            .order_by(func.random(seed))\
-            .limit(class_size)\
-            .alias('class_subset')
+        if class_size is not None:
+            class_subset_alias =\
+                select(data.c)\
+                .where(column(class_col) == class_val)\
+                .order_by(func.random(seed))\
+                .limit(class_size)\
+                .alias('class_subset')
+
+        elif sample_rate is not None:
+            class_subset_alias =\
+                select(data.c)\
+                .where(column(class_col) == class_val)\
+                .where(func.random(seed) < sample_rate)\
+                .alias('class_subset')
 
         # Nests it in another select, since there is a glitch which
         # prevents us from selecting from a union if a limit and/or
@@ -181,9 +226,11 @@ def balance_classes(data, class_col, class_sizes=1000, class_values=None,
         return select(class_subset_alias.c)
 
 
-    if isinstance(class_sizes, dict) and class_values is not None:
-        raise ValueError('If class_sizes is a dict, then class_values must be '
-                         'None.')
+    _check_for_input_errors()
+
+    # Sets default class_sizes value
+    if class_sizes is None and sample_rates is None:
+        class_sizes = 1000
 
     # If class_values is a dict, then we can infer classes. Only
     # retrieve the class values from the database if we can't infer.
