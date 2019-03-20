@@ -213,6 +213,8 @@ def balance_classes(data, class_col, class_sizes=None, sample_rates=None,
                 .alias('class_subset')
 
         elif sample_rate is not None:
+            # TODO: Note, this does not actually work with multiple
+            # classes since Impala is terrible.
             class_subset_alias =\
                 select(data.c)\
                 .where(column(class_col) == class_val)\
