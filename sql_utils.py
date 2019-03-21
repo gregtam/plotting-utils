@@ -21,9 +21,9 @@ from sqlalchemy.sql.selectable import Alias, Select
 def _drop_table(table_name, schema, engine, print_query=False):
     """Drops a SQL table."""
     if schema is None:
-        drop_str = f'DROP TABLE IF EXISTS {table_name};'
+        drop_str = 'DROP TABLE IF EXISTS {};'.format(table_name)
     else:
-        drop_str = f'DROP TABLE IF EXISTS {schema}.{table_name};'
+        drop_str = 'DROP TABLE IF EXISTS {}.{};'.format(schema, table_name)
 
     if print_query:
         print(drop_str)
@@ -58,7 +58,7 @@ def _get_create_col_list(data, partitioned_by):
                                for col in data.c
                                    if col.name not in partitioned_by]
     elif isinstance(data, pd.DataFrame):
-        create_col_list = [f'{k} {_from_df_type_to_sql_type(v)}'
+        create_col_list = ['{} {}'.format(k, _from_df_type_to_sql_type(v))
                                for k, v in data.dtypes.items()
                                    if k not in partitioned_by]
 
@@ -77,7 +77,7 @@ def _get_partition_col_list(data, partitioned_by):
         partition_col_list = [_get_single_partitioned_str(data, col_str)
                                   for col_str in partitioned_by]
     elif isinstance(data, pd.DataFrame):
-        partition_col_list = [f'{k} {_from_df_type_to_sql_type(v)}'
+        partition_col_list = ['{} {}'.format(k, _from_df_type_to_sql_type(v))
                                   for k, v in data.dtypes.items()
                                       if k in partitioned_by]
     return partition_col_list
@@ -86,7 +86,7 @@ def _get_partition_col_list(data, partitioned_by):
 def _get_single_partitioned_str(data, col_str):
     """Returns a string of the column name and type for partitioning."""
     col = data.c[col_str]
-    return f'{col.name} {col.type.__visit_name__}'
+    return '{col.name} {col.type.__visit_name__}'
 
 
 def _separate_schema_table(full_table_name, con):
@@ -260,7 +260,7 @@ def clear_schema(schema_name, con, print_query=False):
         If True, print the resulting query
     """
 
-    sql = f'SHOW TABLES IN {schema_name};'
+    sql = 'SHOW TABLES IN {};'.format(schema_name)
 
     if print_query:
         print(dedent(sql))
@@ -268,7 +268,7 @@ def clear_schema(schema_name, con, print_query=False):
     table_names = psql.read_sql(sql, con).table_name
 
     for table_name in table_names:
-        del_sql = f'DROP TABLE IF EXISTS {schema_name}.{table_name};'
+        del_sql = 'DROP TABLE IF EXISTS {}.{};'.format(schema_name, table_name)
         psql.execute(del_sql, con)
 
 
@@ -459,7 +459,7 @@ def count_distincts_by_group(data, group_by_cols, count_distinct_cols):
         group_by_slct =\
             select(group_by_col_list
                    + [func.count(distinct(count_col))
-                          .label(f'n_distinct_{count_col.name}')
+                          .label('n_distinct_{}'.format(count_col.name))
                      ],
                    from_obj=data
                   )\
@@ -515,7 +515,7 @@ def count_distincts_by_group(data, group_by_cols, count_distinct_cols):
         [_compute_single_distinct(count_col)
              for count_col in count_distinct_col_list]
     # Assign different Alias names to each
-    grouped_alias_list = [data.alias(f'foo_{i}')
+    grouped_alias_list = [data.alias('foo_{}'.format(i))
                               for i, data in enumerate(grouped_slct_list)]
 
     # Join together all distinct Alias results
@@ -546,7 +546,7 @@ def count_rows(data, print_commas=True):
         .scalar()
 
     if print_commas:
-        print(f'{row_count:,}')
+        print('{:,}'.format(row_count))
 
     return row_count
 
@@ -591,7 +591,7 @@ def fetch_column_names(full_table_name, con, order_by='ordinal_position',
             df = df.iloc[::-1].reset_index(drop=True)
         return df
 
-    sql = f'DESCRIBE {full_table_name};'
+    sql = 'DESCRIBE {};'.format(full_table_name)
     if print_query:
         print(sql)
 
@@ -622,7 +622,7 @@ def fetch_table_names(con, schema_name=None, print_query=False):
     if schema_name is None:
         sql = 'SHOW TABLES;'
     else:
-        sql = f'SHOW TABLES IN {schema_name};'
+        sql = 'SHOW TABLES IN {};'.format(schema_name)
 
     if print_query:
         print(sql)
@@ -674,7 +674,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
     def _create_empty_table(full_table_name):
         """Creates an empty table based on a DataFrame."""
         # Set create table string
-        create_str = f'CREATE TABLE {full_table_name}'
+        create_str = 'CREATE TABLE {}'.format(full_table_name)
 
         # Specify column names and data types
         create_col_list = _get_create_col_list(df, partitioned_by)
@@ -755,7 +755,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
         """
 
         # FIXME: Incorporate inserting rows with partitions in batches
-        insert_str = f'INSERT INTO {full_table_name}\n'
+        insert_str = 'INSERT INTO {}\n'.format(full_table_name)
 
         # VALUES Clause
         # Each entry represents a row of the DataFrame that is being
@@ -767,10 +767,11 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
         # Add PARTITION Clause if specified
         if partition_dict is not None:
             partition_vals_str = _get_partition_vals_str(partition_dict)
-            partition_str = f'PARTITION {partition_vals_str}\n'
-            insert_values_str = f'{insert_str}{partition_str}{values_str};'
+            partition_str = 'PARTITION {}\n'.format(partition_vals_str)
+            insert_values_str = '{}{}{};'\
+                .format(insert_str, partition_str, values_str)
         else:
-            insert_values_str = f'{insert_str}{values_str};'
+            insert_values_str = '{}{};'.format(insert_str, values_str)
 
         if print_query:
             print(insert_values_str)
@@ -792,14 +793,14 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
             str_row_srs = str_row_srs.drop(list(partition_dict.keys()))
 
         insert_sql = ', '.join(str_row_srs)
-        insert_sql = f'({insert_sql})'
+        insert_sql = '({})'.format(insert_sql)
 
         return insert_sql
 
     def _get_partition_vals_str(partition_dict):
         """Returns the partition string from the partition dict."""
         partition_vals_str_list =\
-            [f'{k}={v}' for k, v in partition_dict.items()]
+            ['{}={}'.format(k, v) for k, v in partition_dict.items()]
 
         partition_vals_str =\
             '({})'.format(', '.join(partition_vals_str_list))
@@ -817,7 +818,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
     if schema is None:
         full_table_name = table_name
     else:
-        full_table_name = f'{schema}.{table_name}'
+        full_table_name = '{}.{}'.format(schema, table_name)
 
     create_col_list, partition_col_list = _create_empty_table(full_table_name)
     #time.sleep(2)
@@ -897,10 +898,10 @@ def save_table(data, table_name, engine, schema=None,
         if schema is None:
             full_table_name = table_name
         else:
-            full_table_name = f'{schema}.{table_name}'
+            full_table_name = '{}.{}'.format(schema, table_name)
 
         # Set create table string
-        create_str = f'CREATE TABLE {full_table_name}'
+        create_str = 'CREATE TABLE {}'.format(full_table_name)
 
         # Specify column names and data types. Double quotes allow for
         # column names with different punctuation (e.g., spaces).

@@ -265,7 +265,7 @@ def date_file_path(file_path, directory='', date_format='%m%d'):
     else:
         dated_file_name = _prepend_date(file_path)
         # Prepend directory to dated_file_name
-        dated_file_path = f'{directory}/{dated_file_name}'
+        dated_file_path = '{}/{}'.format(directory, dated_file_name)
 
     return dated_file_path
 
