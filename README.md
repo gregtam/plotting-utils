@@ -1,7 +1,7 @@
 # python-utils
 This repo includes files with various reusable Python functions for data science tasks.
 
-The python3.5 branch uses str.format() functions throughout, since the master branch uses f strings, which are only available in Python 3.6+.
+*The `python3.5` branch uses `str.format()` functions throughout, since the master branch uses f strings, which are only available in Python 3.6+.*
 
 ### Python Files
 - `ml_utils.py`: Various useful functions to manipulate pandas DataFrames for use in machine learning, such as balancing classes or creating a limited number of dummy variables.
