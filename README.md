@@ -1,4 +1,6 @@
 # python-utils
+*Note*: These functions are built for Python 3.6+. Most notably, this includes ths use of f-strings. If you are working in an environment that uses Python 3.5 and below, please refer to the `python3.5` branch of this repository: <https://github.com/gregtam/python-utils/tree/python3.5>.
+
 This repo includes files with various reusable Python functions for data science tasks.
 
 ### Python Files
