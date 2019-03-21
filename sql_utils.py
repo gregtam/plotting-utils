@@ -852,7 +852,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
 
 def save_table(data, table_name, engine, schema=None,
                partitioned_by=[], drop_table=False, print_query=False,
-               stage=None):
+               delay_time=1):
     """Saves a SQLAlchemy selectable object to database.
 
     Parameters
@@ -870,13 +870,25 @@ def save_table(data, table_name, engine, schema=None,
         If True, drop the table if it exists before creating new table
     print_query : str, default False
         If True, print the resulting query
-    stage : str, default None
-        Determines which stage of the creation process should be done.
-        It should be one of 'drop', 'create', or 'insert'. This is
-        implemented since sometimes there can be a glitch in Impala
-        where there is a delay between dropping and creating a table.
-        So, running them all consecutively in a function may not work.
-        This parameter allows to specify which stage is being done.
+    delay_time : int or float, default 1
+        Delays the time between creating a table and inserting rows (and
+        also between dropping and creating a table, if applicable). This
+        is necessary since either the impyla library or Impala itself
+        has a glitch where there is a slight delay of when the results
+        of a query will affect Impala.
+
+        For example, if you drop a table, then immediately create
+        another one with the same name, because there is a small delay
+        after the drop, the create statement will throw an error because
+        the drop was not registered at the time of creation.
+
+        Similarly, if you create a table, then immediately try to insert
+        to it, an error will be thrown because the the creation was not
+        registered when the insert query is run.
+
+        Adding a small delay in between drop, create, and insert can
+        give Impala a bit of time to process the changes before the next
+        query is run.
     """
 
     def _create_empty_table():
@@ -919,29 +931,36 @@ def save_table(data, table_name, engine, schema=None,
         # Create the table with no rows
         psql.execute(create_table_str, engine)
 
-    if drop_table and (stage == 'drop' or stage is None):
+
+    if drop_table:
         # TODO: There is a delay when dropping and creating a table
         # immediately after. Look into using cur instead of engine to
         # potentially solve it.
         _drop_table(table_name, schema, engine, print_query)
 
+        # Add delay between DROP and CREATE
+        time.sleep(delay_time)
+
     # Create an empty table with the desired columns
-    if stage == 'create' or stage is None:
-        _create_empty_table()
+    _create_empty_table()
 
-    if stage == 'insert' or stage is None:
-        metadata = MetaData(engine)
-        created_table = Table(table_name, metadata,
-                              autoload=True, schema=schema)
+    # Add delay between CREATE and INSERT
+    time.sleep(delay_time)
 
-        # Insert rows from selected table into the new table
-        insert_sql = created_table\
-            .insert()\
-            .from_select(data.c,
-                         select=data
-                        )
+    # Load new empty table via SQLAlchemy
+    metadata = MetaData(engine)
+    created_table = Table(table_name, metadata,
+                          autoload=True, schema=schema)
 
-        psql.execute(insert_sql, engine)
+    # Insert rows from selected table into the new table
+    insert_sql = created_table\
+        .insert()\
+        .from_select(data.c,
+                     select=data
+                    )
+
+    # Execute insertion
+    psql.execute(insert_sql, engine)
 
 
 def sql_join(left_data, right_data, join_key, how='inner'):
