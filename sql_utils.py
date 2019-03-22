@@ -524,6 +524,105 @@ def count_distincts_by_group(data, group_by_cols, count_distinct_cols):
     return grouped_count_distinct_alias
 
 
+def count_values(data, group_by, order_by, desc=False):
+    """Performs a group by to count the number of values by group.
+
+    Parameters
+    ----------
+    data : SQLAlchemy Alias/Table
+    group_by : str or list of str
+        Defines which column(s) to group by
+    order_by : str or list of str
+        Defines how to order the results by specifying the column
+        name(s) to order by. Alternatively, order_by can take on the
+        following special names:
+            - 'group': To automatically order by the grouping columns
+            - 'count': To order by the counts
+    desc : bool or list of bool, default False
+        Determines whether to order columns in descending order. If desc
+        is a boolean, apply the ordering to all columns. If it is a
+        list, it should be the same length as order_by.
+
+    Returns
+    -------
+    group_by_df : DataFrame
+    """
+
+    def _check_for_input_errors():
+        """Check parameters for errors."""
+        if not isinstance(group_by, (str,) + array_like_types):
+            raise ValueError('group_by must be a str or array-like')
+        if not isinstance(order_by, (str,) + array_like_types):
+            raise ValueError('order_by must be a str or array-like')
+        if not isinstance(desc, (bool,) + array_like_types):
+            raise ValueError('desc must be a bool or array-like')
+
+    def _create_grouping_cols():
+        """Creates the columns to use for grouping."""
+        if isinstance(group_by, str):
+            return [column(group_by)]
+        elif isinstance(group_by, array_like_types):
+            return [column(col_name) for col_name in group_by]
+
+    def _create_order_by_list():
+        """Creates a list that specifies ordering columns."""
+        if isinstance(order_by, array_like_types):
+            return [column(col_name) for col_name in order_by]
+        elif order_by == 'group':
+            return grouping_cols
+        elif order_by == 'count':
+            return [func.count()]
+
+        # Otherwise, if it is a string
+        return [column(order_by)]
+
+    def _create_order_by_desc_list():
+        """Creates list that specifies ordering columns with ascending
+        or descending.
+        """
+
+        if isinstance(desc, bool):
+            return [_apply_desc_logic(col, desc) for col in order_by_list]
+        elif isinstance(desc, array_like_types):
+            return [_apply_desc_logic(col, is_desc)
+                        for col, is_desc in zip(order_by_list, desc)]
+
+    def _apply_desc_logic(order_by_col, is_desc):
+        """Returns descended ordering, if applicable."""
+        if is_desc:
+            return order_by_col.desc()
+        return order_by_col
+
+
+    array_like_types = (list, tuple, np.ndarray)
+    _check_for_input_errors()
+
+    # Create a list of the grouping columns
+    grouping_cols = _create_grouping_cols()
+
+    # Specify the ordering columns
+    order_by_list = _create_order_by_list()
+
+    # Make sure lengths of order_by and desc match up
+    if isinstance(desc, array_like_types)\
+            and len(order_by_list) != len(desc):
+        raise ValueError('The lengths of order_by and desc should be the same')
+
+    # Specify ordering (including any descending orderings)
+    order_by_desc_list = _create_order_by_desc_list()
+
+    group_by_slct =\
+        select(grouping_cols
+               + [func.count().label('n_rows')],
+               from_obj=data
+              )\
+        .group_by(*grouping_cols)\
+        .order_by(*order_by_desc_list)
+
+    group_by_df = convert_table_to_df(group_by_slct)
+
+    return group_by_df
+
 def count_rows(data, print_commas=True):
     """Counts the number of rows from a SQLAlchemy Alias or Table.
 
