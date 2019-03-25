@@ -825,7 +825,7 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
         if pd.isnull(x):
             return 'NULL'
         else:
-            return f"'{x}'"
+            return "'{}'".format(x)
 
     def _get_partition_vals():
         """Gets the values used for partitioning."""
