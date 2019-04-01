@@ -919,7 +919,6 @@ def save_df_to_db(df, table_name, engine, schema=None, batch_size=0,
         full_table_name = f'{schema}.{table_name}'
 
     create_col_list, partition_col_list = _create_empty_table(full_table_name)
-    #time.sleep(2)
     df = _add_quotes_to_data(df)
 
     if isinstance(partitioned_by, str):
