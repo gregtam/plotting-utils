@@ -165,9 +165,9 @@ def plot_precision_recall_curve(y_test, y_score, ax=None, title=None, **kwargs):
 
     def _get_plot_title(auc_score):
         """Returns the title of the plot."""
-        plot_title = 'Precision-Recall Curve - AUC: {:.3f}'.format(auc_score)
+        plot_title = f'Precision-Recall Curve - AUC: {auc_score:.3f}'
         if title is not None:
-            plot_title = '{}\n{}'.format(title, plot_title)
+            plot_title = f'{title}\n{plot_title}'
         return plot_title
 
 
@@ -258,12 +258,12 @@ def plot_proportion_w_confint(data_df, x_col, y_col, top_n=10, max_ci_len=1.0,
 
         if show_n_obs == 'in_plot':
             for index, n_obs in enumerate(grouped_df.n_obs):
-                n_obs_txt = 'n_obs = {:,}'.format(n_obs)
+                n_obs_txt = f'n_obs = {n_obs:,}'
                 plt.text(0.01, index, n_obs_txt,
                          color='white', size=12, verticalalignment='center')
         elif show_n_obs == 'in_axis':
             # Include number of observations in index
-            grouped_df.index = ['{} (n_obs = {:,})'.format(sr, n_obs)
+            grouped_df.index = [f'{sr} (n_obs = {n_obs:,})'
                                     for sr, n_obs in zip(grouped_df.index,
                                                          grouped_df.n_obs)]
         elif show_n_obs is not None:
@@ -425,9 +425,9 @@ def plot_roc_curve(y_test, y_score, ax=None, title=None,
 
     def _get_plot_title(auc_score):
         """Returns the title of the plot."""
-        plot_title = 'ROC Curve - AUC: {:.3f}'.format(auc_score)
+        plot_title = f'ROC Curve - AUC: {auc_score:.3f}'
         if title is not None:
-            plot_title = '{}\n{}'.format(title, plot_title)
+            plot_title = f'{title}\n{plot_title}'
         return plot_title
 
 
@@ -480,13 +480,14 @@ def save_fig(filename, directory='plots'):
     month = date_today.month
     day = date_today.day
 
+    # TODO: Make this cleaner
     if filename.endswith('.png'):
-        save_name = '{}/{:02d}{:02d}_{}'\
-            .format(directory, month, day, filename)
+        save_name = f'{directory}/{month:02d}{day:02d}_{filename}'
     elif '.' in filename:
-        save_name = '{}/{:02d}{:02d}_{}.png'\
-            .format(directory, month, day, filename.split('.')[0])
+        # Take file name if contains extension
+        filename = filename.split('.')[0]
+        save_name = f'{directory}/{month:02d}{day:02d}_{filename}.png'
     else:
-        save_name = '{}/{:02d}{:02d}_{}.png'\
-            .format(directory, month, day, filename)
+        save_name = f'{directory}/{month:02d}{day:02d}_{filename}.png'
+
     plt.savefig(save_name)
