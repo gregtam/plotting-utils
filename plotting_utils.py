@@ -7,7 +7,8 @@ import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import ElasticNet, LinearRegression,\
                                  LogisticRegression
-from sklearn.metrics import roc_auc_score, roc_curve
+from sklearn.metrics import auc, precision_recall_curve, roc_auc_score,\
+                            roc_curve
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor,\
                          ExtraTreeClassifier, ExtraTreeRegressor
 from statsmodels.stats.proportion import proportion_confint
@@ -134,6 +135,69 @@ def plot_feature_importances(clf, feat_names, top_n=None, **kwargs):
     feat_imp_df = feat_imp_df.iloc[::-1]
 
     return feat_imp_df
+
+
+def plot_precision_recall_curve(y_test, y_score, ax=None, title=None, **kwargs):
+    """Plots the Precision-Recall curve for a binary classifier.
+
+    Parameters
+    ----------
+    y_test : array
+        The true values of the observations.
+    y_score : array
+        The corresponding scores.
+    ax : Matplotlib axes object, default None
+    title : str, default None
+        Plotting title. It will add AUC after this.
+    kwargs : Matplotlib keyword arguments
+
+    Returns
+    -------
+    precision : array
+        An array of the precision values
+    recall : array
+        An array of the recall values
+    thresholds : array
+        The score thresholds
+    auc_score : float
+        The AUC score
+    """
+
+    def _get_plot_title(auc_score):
+        """Returns the title of the plot."""
+        plot_title = 'Precision-Recall Curve - AUC: {:.3f}'.format(auc_score)
+        if title is not None:
+            plot_title = '{}\n{}'.format(title, plot_title)
+        return plot_title
+
+
+    precision, recall, thresholds = precision_recall_curve(y_test, y_score)
+    auc_score = auc(recall, precision)
+
+    plot_title = _get_plot_title(auc_score)
+
+    if ax is None:
+        plt.plot(recall, precision, **kwargs)
+
+        plt.title(plot_title)
+        plt.xlabel('Recall')
+        plt.ylabel('Precision')
+
+        plt.xlim(0, 1)
+        plt.ylim(0, 1)
+    else:
+        ax.plot(recall, precision, **kwargs)
+
+        ax.set_title(plot_title)
+        ax.set_xlabel('Recall')
+        ax.set_ylabel('Precision')
+
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+
+    plt.tight_layout()
+
+    return precision, recall, thresholds, auc_score
 
 
 def plot_proportion_w_confint(data_df, x_col, y_col, top_n=10, max_ci_len=1.0,
@@ -330,8 +394,8 @@ def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
     return reg_coef_df
 
 
-def plot_roc(y_test, y_score, ax=None, title=None, show_random_guess_line=True,
-             **kwargs):
+def plot_roc_curve(y_test, y_score, ax=None, title=None,
+                   show_random_guess_line=True, **kwargs):
     """Plots the ROC curve for a binary classifier.
 
     Parameters
@@ -361,7 +425,7 @@ def plot_roc(y_test, y_score, ax=None, title=None, show_random_guess_line=True,
 
     def _get_plot_title(auc_score):
         """Returns the title of the plot."""
-        plot_title = 'AUC: {:.3f}'.format(auc_score)
+        plot_title = 'ROC Curve - AUC: {:.3f}'.format(auc_score)
         if title is not None:
             plot_title = '{}\n{}'.format(title, plot_title)
         return plot_title
