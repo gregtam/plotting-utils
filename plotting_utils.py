@@ -18,6 +18,82 @@ blue, orange, green, red, purple, brown, pink, grey, yellow, sky_blue =\
 
 
 
+def compute_capture_review_rate_curve(y_true, y_score):
+    """Computes the curve to plot capture rate against review rate.
+
+    Parameters
+    ----------
+    y_true : array-like
+        The true labels
+    y_score : array-like
+        The scores that the machine learning model outputs
+
+    Returns
+    -------
+    capture_review_rate_df : DataFrame
+    """
+
+    def _add_cumulative_columns():
+        """Adds cumulative columns to sum values higher than threshold."""
+        grouped_scores_df['cum_size'] =\
+            grouped_scores_df['size'].cumsum()
+        grouped_scores_df['cum_num_fraud'] =\
+            grouped_scores_df['num_fraud'].cumsum()
+        grouped_scores_df['cum_num_non_fraud'] =\
+            grouped_scores_df.cum_size - grouped_scores_df.cum_num_fraud
+
+    def _add_capture_review_rates():
+        """Add capture and review rates as columns."""
+        grouped_scores_df['review_rate'] =\
+            grouped_scores_df.cum_size/total_n_obs
+        grouped_scores_df['capture_rate'] =\
+            grouped_scores_df.cum_num_fraud/fraud_dist_srs[1]
+
+    def _add_origin_row(grouped_scores_df):
+        """Adds row to account for origin point."""
+        # Create DataFrame containing all 0's (except at score) to
+        # append to the beginning of grouped_scores_df
+        origin_df = pd.DataFrame(columns=grouped_scores_df.columns)
+        origin_df.loc[0] = 0
+        origin_df['score'] = np.nan
+        grouped_scores_df = pd.concat([origin_df, grouped_scores_df])
+
+        return grouped_scores_df.reset_index(drop=True)
+
+
+    # Scores the true labels and the scores in a DataFrame
+    temp_df = pd.DataFrame({'label': y_true,
+                            'score': y_score
+                           })
+
+    # Series with total number of fraud and non-fraud
+    fraud_dist_srs = temp_df.label.value_counts()
+
+    # Total number of observations
+    total_n_obs = len(temp_df)
+
+    # Group by unique scores, then sort in descending order to later
+    # apply cumulative functions
+    grouped_scores_df = temp_df\
+        .groupby('score')\
+        .label\
+        .agg([np.size, np.sum])\
+        .rename({'sum': 'num_fraud'}, axis=1)\
+        .reset_index()\
+        .sort_values('score', ascending=False)
+
+    # Adds columns computed cumulatively
+    _add_cumulative_columns()
+
+    # Compute the capture and review rates at each threshold value
+    _add_capture_review_rates()
+
+    # Add origin row so when data is plotted, it starts at origin
+    capture_review_rate_df = _add_origin_row(grouped_scores_df)
+
+    return capture_review_rate_df
+
+
 def plot_compare_feat_population(data_df, x_col, y_col, normalize=False,
                                  **kwargs):
     """Plots overlaid histograms of a given feature for different
