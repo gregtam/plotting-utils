@@ -24,9 +24,9 @@ def compute_capture_review_rate_curve(y_true, y_score):
     Parameters
     ----------
     y_true : array-like
-        The true labels
+        The true labels of the observations.
     y_score : array-like
-        The scores that the machine learning model outputs
+        The corresponding scores.
 
     Returns
     -------
@@ -213,12 +213,12 @@ def plot_feature_importances(clf, feat_names, top_n=None, **kwargs):
     return feat_imp_df
 
 
-def plot_precision_recall_curve(y_test, y_score, ax=None, title=None, **kwargs):
+def plot_precision_recall_curve(y_true, y_score, ax=None, title=None, **kwargs):
     """Plots the Precision-Recall curve for a binary classifier.
 
     Parameters
     ----------
-    y_test : array
+    y_true : array
         The true values of the observations.
     y_score : array
         The corresponding scores.
@@ -247,7 +247,7 @@ def plot_precision_recall_curve(y_test, y_score, ax=None, title=None, **kwargs):
         return plot_title
 
 
-    precision, recall, thresholds = precision_recall_curve(y_test, y_score)
+    precision, recall, thresholds = precision_recall_curve(y_true, y_score)
     auc_score = auc(recall, precision)
 
     plot_title = _get_plot_title(auc_score)
@@ -470,13 +470,13 @@ def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
     return reg_coef_df
 
 
-def plot_roc_curve(y_test, y_score, ax=None, title=None,
+def plot_roc_curve(y_true, y_score, ax=None, title=None,
                    show_random_guess_line=True, **kwargs):
     """Plots the ROC curve for a binary classifier.
 
     Parameters
     ----------
-    y_test : array
+    y_true : array
         The true values of the observations.
     y_score : array
         The corresponding scores.
@@ -507,8 +507,8 @@ def plot_roc_curve(y_test, y_score, ax=None, title=None,
         return plot_title
 
 
-    auc_score = roc_auc_score(y_test, y_score)
-    fpr, tpr, thresholds = roc_curve(y_test, y_score)
+    auc_score = roc_auc_score(y_true, y_score)
+    fpr, tpr, thresholds = roc_curve(y_true, y_score)
 
     plot_title = _get_plot_title(auc_score)
 
