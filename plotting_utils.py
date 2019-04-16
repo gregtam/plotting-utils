@@ -94,6 +94,59 @@ def compute_capture_review_rate_curve(y_true, y_score):
     return capture_review_rate_df
 
 
+def plot_capture_review_rate_curve(y_true, y_score, ax=None,
+                                   show_random_guess_line=True, **kwargs):
+    """Plots the curve comparing the capture rate vs. the review rate
+    for a binary classifier.
+
+    Parameters
+    ----------
+    y_true : array
+        The true values of the observations.
+    y_score : array
+        The corresponding scores.
+    ax : Matplotlib axes object, default None
+    show_random_guess_line : bool, default True
+        Whether to show the random guess line
+    kwargs : Matplotlib keyword arguments
+
+    Returns
+    -------
+    capture_review_rate_df : DataFrame
+    """
+
+    capture_review_rate_df = compute_capture_review_rate_curve(y_true, y_score)
+
+    if ax is None:
+        plt.plot(capture_review_rate_df.review_rate,
+                 capture_review_rate_df.capture_rate,
+                 **kwargs
+                )
+        if show_random_guess_line:
+            plt.plot([0, 1], [0, 1], c='black', linestyle='--')
+
+        plt.xlabel('Review Rate')
+        plt.ylabel('Capture Rate')
+
+        plt.xlim(0, 1)
+        plt.ylim(0, 1)
+    else:
+        capture_review_rate_df.plot(x='review_rate', y='capture_rate',
+                                    legend=None, ax=ax, **kwargs)
+        if show_random_guess_line:
+            ax.plot([0, 1], [0, 1], c='black', linestyle='--')
+
+        ax.set_xlabel('Review Rate')
+        ax.set_ylabel('Capture Rate')
+
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+
+    plt.tight_layout()
+
+    return capture_review_rate_df
+
+
 def plot_compare_feat_population(data_df, x_col, y_col, normalize=False,
                                  **kwargs):
     """Plots overlaid histograms of a given feature for different
