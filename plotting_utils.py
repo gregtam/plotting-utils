@@ -467,11 +467,6 @@ def plot_regression_coefficients(reg_coef_df, top_n=None, coef_col_name='coef',
     coef_col_name : str, default 'coef'
         The name of the column that contains the coefficient values
     kwargs : Matplotlib keyword arguments
-
-    Returns
-    -------
-    reg_coef_df : DataFrame
-        Same as the input, but with the coefficient values sorted
     """
 
     # Sort coefficients
@@ -522,10 +517,6 @@ def plot_regression_coefficients(reg_coef_df, top_n=None, coef_col_name='coef',
     plt.ylabel('Feature Name')
 
     plt.yticks(np.arange(-n_neg_coef, n_pos_coef + 1), plot_feat_names)
-
-    # Return DataFrame reversed so that the order of features in the
-    # DataFrame matches the plot
-    return reg_coef_df.iloc[::-1]
 
 
 def plot_roc_curve(y_true, y_score, ax=None, title=None,
