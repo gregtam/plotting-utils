@@ -93,6 +93,45 @@ def create_balanced_train_test_splits(df, class_col, train_class_size,
     return train_test_set_list
 
 
+def create_coef_df(clf, feat_names):
+    """Creates a DataFrame that maps the feature names to their
+    corresponding coefficients.
+
+    Parameters
+    ----------
+    clf : The sklearn regression classifier object. Can be one of
+        ElasticNet, LinearRegression, LogisticRegression, SGDClassifier,
+        or SGDRegressor.
+    feat_names : array-like
+        The feature names used for training the classifier.
+
+    Returns
+    -------
+    reg_coef_df : DataFrame
+        Contains feature names and regression coefficients
+    """
+
+    # Create DataFrame with feature names
+    reg_coef_df = pd.DataFrame({'feat_name': feat_names})
+
+    # Add coefficients to DataFrame
+    if isinstance(clf, (LogisticRegression, SGDClassifier)):
+        reg_coef_df['coef'] = clf.coef_[0]
+    elif isinstance(clf, (ElasticNet, LinearRegression, SGDRegressor)):
+        reg_coef_df['coef'] = clf.coef_
+    else:
+        raise ValueError('clf is not a valid classifier. It should be one of '
+                         '(ElasticNet, LinearRegression, LogisticRegression, '
+                         'SGDClassifier, SGDRegressor)')
+
+    # Clean up and sort by value
+    reg_coef_df = reg_coef_df\
+        .set_index('feat_name')\
+        .sort_values('coef', ascending=False)
+
+    return reg_coef_df
+
+
 def extract_dt_rule_string(obs, tree, feature_names):
     """This function gets, for a given observation, the set of rules the
     observation follows in a Decision Tree.

@@ -6,7 +6,8 @@ import pandas as pd
 import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import ElasticNet, LinearRegression,\
-                                 LogisticRegression
+                                 LogisticRegression, SGDClassifier,\
+                                 SGDRegressor
 from sklearn.metrics import auc, precision_recall_curve, roc_auc_score,\
                             roc_curve
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor,\
@@ -452,75 +453,79 @@ def plot_proportion_w_confint(data_df, x_col, y_col, top_n=10, max_ci_len=1.0,
     return grouped_df
 
 
-def plot_regression_coefficients(clf, feat_names, top_n=None, **kwargs):
+def plot_regression_coefficients(reg_coef_df, top_n=None, coef_col_name='coef',
+                                 **kwargs):
     """Plots the most extreme regression coefficients.
 
     Parameters
     ----------
-    feat_names : list
-        A list of the feature names
+    reg_coef_df : DataFrame
+        DataFrame that contains feature names and coefficients
     top_n : int, default None
-        The number of most extreme features to plot. If None, plot all
-        features
+        The number of most extreme positively and negatively associated
+        features to plot. If None, plot all features.
+    coef_col_name : str, default 'coef'
+        The name of the column that contains the coefficient values
     kwargs : Matplotlib keyword arguments
 
     Returns
     -------
     reg_coef_df : DataFrame
+        Same as the input, but with the coefficient values sorted
     """
 
-    def _create_coef_df():
-        """Creates a DataFrame that maps the feature names to their
-        corresponding coefficients.
-        """
-
-        reg_coef_df = pd.DataFrame()
-        reg_coef_df['feat_name'] = feat_names
-        if isinstance(clf, LogisticRegression):
-            reg_coef_df['coef'] = clf.coef_[0]
-        else:
-            reg_coef_df['coef'] = clf.coef_
-
-        return reg_coef_df\
-            .set_index('feat_name')\
-            .sort_values('coef')
-
-
-    clf_tuple = (ElasticNet, LinearRegression, LogisticRegression)
-    if not isinstance(clf, clf_tuple):
-        raise TypeError('clf should be one of (ElasticNet, LinearRegression, '
-                        'LogisticRegression)')
-
-    reg_coef_df = _create_coef_df()
+    # Sort coefficients
+    reg_coef_df = reg_coef_df.sort_values(coef_col_name)
 
     if top_n is not None:
         # Most negative coefficients
-        reg_coef_df_head = reg_coef_df.head(top_n)
+        neg_coef_df = reg_coef_df\
+            .query(f'{coef_col_name} < 0')\
+            .head(top_n)
+
         # Most positive coefficients
-        reg_coef_df_tail = reg_coef_df.tail(top_n)
+        pos_coef_df = reg_coef_df\
+            .query(f'{coef_col_name} > 0')\
+            .tail(top_n)
     else:
-        # Most negative coefficients
-        reg_coef_df_head = reg_coef_df
-        # Most positive coefficients
-        reg_coef_df_tail = reg_coef_df
+        # All negative coefficients
+        neg_coef_df = reg_coef_df.query(f'{coef_col_name} < 0')
+
+        # All positive coefficients
+        pos_coef_df = reg_coef_df.query(f'{coef_col_name} > 0')
+
+
+    # Captures the amount of positive and negative coefficients to plot
+    n_neg_coef = len(neg_coef_df)
+    n_pos_coef = len(pos_coef_df)
 
     # Get yticks
-    plot_feat_names = reg_coef_df_head.index.tolist()\
+    plot_feat_names = neg_coef_df.index.tolist()\
                       + [' ']\
-                      + reg_coef_df_tail.index.tolist()
+                      + pos_coef_df.index.tolist()
 
-    # Plot bar chart
-    plt.barh(np.arange(1, top_n+1), reg_coef_df_tail.coef, color=green)
-    plt.plot([0, 0], [-top_n - 0.5, top_n + 0.5], '--', color='black')
-    plt.barh(np.arange(-top_n, 0), reg_coef_df_head.coef, color=red)
+    # Plot bar charts for positive and negative
+    plt.barh(np.arange(n_pos_coef) + 1,
+             pos_coef_df[coef_col_name],
+             color=green)
+
+    plt.barh(np.arange(-n_neg_coef, 0),
+             neg_coef_df[coef_col_name],
+             color=red)
+
+    # Plot centre dotted line
+    plt.plot([0, 0],
+             [-n_neg_coef - 0.5, n_pos_coef + 0.5],
+             '--', color='black')
 
     plt.xlabel('Coefficient Value')
     plt.ylabel('Feature Name')
-    plt.yticks(np.arange(-top_n, top_n + 1), plot_feat_names)
 
-    reg_coef_df = reg_coef_df.iloc[::-1]
+    plt.yticks(np.arange(-n_neg_coef, n_pos_coef + 1), plot_feat_names)
 
-    return reg_coef_df
+    # Return DataFrame reversed so that the order of features in the
+    # DataFrame matches the plot
+    return reg_coef_df.iloc[::-1]
 
 
 def plot_roc_curve(y_true, y_score, ax=None, title=None,
