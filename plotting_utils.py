@@ -62,9 +62,11 @@ def compute_capture_review_rate_curve(y_true, y_score):
         return grouped_scores_df.reset_index(drop=True)
 
 
-    # Scores the true labels and the scores in a DataFrame
-    temp_df = pd.DataFrame({'label': y_true,
-                            'score': y_score
+    # Scores the true labels and the scores in a DataFrame.
+    # Convert to numpy arrays since if they are pandas Series, then
+    # the indices might not align properly.
+    temp_df = pd.DataFrame({'label': np.array(y_true),
+                            'score': np.array(y_score)
                            })
 
     # Series with total number of fraud and non-fraud
